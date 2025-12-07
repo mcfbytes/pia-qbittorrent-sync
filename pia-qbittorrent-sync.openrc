@@ -1,0 +1,68 @@
+#!/sbin/openrc-run
+# OpenRC service file for PIA qBittorrent Sync Service (Alpine Linux)
+
+name="PIA qBittorrent Sync"
+description="Automatically updates qBittorrent listening port with PIA port forwarding"
+
+command="/opt/pia-qbittorrent-sync/venv/bin/python3"
+command_args="/opt/pia-qbittorrent-sync/pia_qbittorrent_sync.py"
+command_background="yes"
+pidfile="/run/${RC_SVCNAME}.pid"
+
+# Service dependencies
+depend() {
+    need net
+    after qbittorrent-nox wg-quick.wg0
+    use logger
+}
+
+# Environment variables
+# These can be set in /etc/conf.d/pia-qbittorrent-sync
+
+start_pre() {
+    # Create log directory if it doesn't exist
+    checkpath --directory --mode 0755 /var/log
+    checkpath --file --mode 0644 /var/log/pia_qbittorrent_sync.log
+    
+    # Create token directory if it doesn't exist
+    checkpath --directory --mode 0755 /run/pia
+    
+    # Check required environment variables
+    if [ -z "$PIA_USERNAME" ] || [ -z "$PIA_PASSWORD" ]; then
+        eerror "PIA_USERNAME and PIA_PASSWORD must be set in /etc/conf.d/pia-qbittorrent-sync"
+        return 1
+    fi
+    
+    if [ -z "$PIA_GATEWAY" ]; then
+        eerror "PIA_GATEWAY must be set in /etc/conf.d/pia-qbittorrent-sync"
+        return 1
+    fi
+}
+
+start() {
+    ebegin "Starting ${name}"
+    start-stop-daemon --start \
+        --make-pidfile \
+        --pidfile "${pidfile}" \
+        --background \
+        --stdout /var/log/pia_qbittorrent_sync.log \
+        --stderr /var/log/pia_qbittorrent_sync.log \
+        --exec "${command}" \
+        -- ${command_args}
+    eend $?
+}
+
+stop() {
+    ebegin "Stopping ${name}"
+    start-stop-daemon --stop \
+        --pidfile "${pidfile}" \
+        --signal SIGTERM \
+        --retry 15
+    eend $?
+}
+
+reload() {
+    ebegin "Reloading ${name}"
+    start-stop-daemon --signal SIGHUP --pidfile "${pidfile}"
+    eend $?
+}

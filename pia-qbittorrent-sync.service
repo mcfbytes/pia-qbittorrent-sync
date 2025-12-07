@@ -1,0 +1,32 @@
+[Unit]
+Description=PIA qBittorrent Sync Service
+After=network-online.target wg-quick@wg0.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/pia-qbittorrent-sync
+ExecStart=/opt/pia-qbittorrent-sync/venv/bin/python3 /opt/pia-qbittorrent-sync/pia_qbittorrent_sync.py
+Restart=always
+RestartSec=10
+
+# Environment variables (customize these)
+Environment="PIA_GATEWAY=10.0.0.1"
+Environment="PIA_TOKEN_FILE=/var/run/pia_token"
+Environment="QBITTORRENT_HOST=http://localhost:8080"
+Environment="QBITTORRENT_USERNAME=admin"
+Environment="QBITTORRENT_PASSWORD=adminadmin"
+Environment="CHECK_INTERVAL=300"
+Environment="LOG_LEVEL=INFO"
+Environment="LOG_FILE=/var/log/pia_qbittorrent_sync.log"
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log /var/run
+
+[Install]
+WantedBy=multi-user.target
