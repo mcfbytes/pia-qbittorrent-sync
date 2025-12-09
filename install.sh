@@ -31,7 +31,10 @@ if command -v apk &> /dev/null; then
     # Install netcat for qBittorrent readiness checks (used in OpenRC service)
     if ! command -v nc &> /dev/null; then
         echo "Installing netcat for service health checks..."
-        apk add --no-cache netcat-openbsd || apk add --no-cache busybox-extras || true
+        if ! apk add --no-cache netcat-openbsd 2>/dev/null && ! apk add --no-cache busybox-extras 2>/dev/null; then
+            echo "Warning: Could not install netcat. Service health checks may not work optimally."
+            echo "You can install it manually later with: apk add netcat-openbsd"
+        fi
     fi
 else
     apt-get update && apt-get install -y python3 python3-pip python3-venv || \
