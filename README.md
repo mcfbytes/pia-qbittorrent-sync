@@ -18,23 +18,35 @@ Shamelessly vibe coded with GitHub Copilot using various models.
 - Active PIA WireGuard connection
 - Python 3.7+
 - qBittorrent 5.0+ with Web UI enabled
+- For Alpine Linux (OpenRC): `netcat-openbsd` or `busybox-extras` (for service health checks)
+
+## Platform Support
+
+This service has been tested on:
+- **Alpine Linux** (OpenRC init system)
+- **Debian/Ubuntu** (systemd)
+- **Other Linux distributions** with systemd
+
+The installation script automatically detects your init system and installs the appropriate service files.
 
 ## Installation
 
 ### Quick Install
 
-Use the provided installation script:
+Use the provided installation script that automatically detects your platform:
 
 ```bash
 sudo ./install.sh
 ```
 
 This will:
-- Auto-detect your init system (OpenRC/systemd)
+- **Auto-detect** your init system (OpenRC on Alpine, systemd on most others)
 - Create a Python virtual environment at `/opt/pia-qbittorrent-sync/venv`
 - Install all dependencies in the virtual environment
-- Set up the appropriate service file
-- Create necessary directories
+- Set up the appropriate service file for your platform
+- Install netcat (on Alpine) for service health checks
+- Create necessary directories and log files
+- Handle line ending conversions automatically (important if installing from Windows)
 
 ### Manual Installation
 
@@ -44,6 +56,8 @@ This will:
 # Install Python 3 (if not already installed)
 # Alpine Linux:
 apk add python3 py3-pip py3-virtualenv
+# For OpenRC service health checks (recommended):
+apk add netcat-openbsd
 
 # Debian/Ubuntu:
 apt-get install python3 python3-pip python3-venv
@@ -187,6 +201,36 @@ All configuration is done via environment variables in the systemd service file:
 
 ## Troubleshooting
 
+### Alpine Linux: qBittorrent not ready on service start
+
+On Alpine Linux with OpenRC, qBittorrent may not be immediately ready when the service starts, even though the init script reports it as "started". The pia-qbittorrent-sync service includes automatic retry logic and waits up to 30 seconds for qBittorrent to become available.
+
+If you still experience issues, you can add a `start_post()` function to your qBittorrent service (`/etc/init.d/qbittorrent-nox`) to ensure it's truly ready:
+
+```bash
+start_post() {
+    # Wait until WebUI port is listening before declaring service ready
+    local retries=30
+    local port="${QBITTORRENT_PORT:-8080}"  # Adjust if using different port
+    
+    einfo "Waiting for qBittorrent Web UI on port ${port}..."
+    
+    until nc -z localhost "$port"; do
+        sleep 1
+        retries=$((retries - 1))
+        [ $retries -le 0 ] && break
+    done
+
+    if nc -z localhost "$port"; then
+        einfo "qBittorrent is ready"
+    else
+        ewarn "qBittorrent did not become ready in time"
+    fi
+}
+```
+
+**Note**: The pia-qbittorrent-sync OpenRC service already includes this wait logic, so adding it to the qBittorrent service is optional but can provide cleaner service startup ordering.
+
 ### Alpine Linux: "cannot execute: required file not found"
 
 This error usually means Windows line endings (CRLF) in the script file. Fix it:
@@ -216,6 +260,18 @@ Ensure OpenRC is properly installed:
 apk add openrc
 rc-update -u
 ```
+
+### Alpine Linux: Missing netcat for health checks
+
+The OpenRC service uses `nc` (netcat) to verify qBittorrent is ready. Install it if missing:
+
+```bash
+apk add netcat-openbsd
+# or if that's not available:
+apk add busybox-extras
+```
+
+The install script attempts to install this automatically, but you can add it manually if needed.
 
 ### Service won't start
 

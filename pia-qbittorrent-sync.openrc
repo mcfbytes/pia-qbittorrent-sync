@@ -52,6 +52,65 @@ start() {
     eend $?
 }
 
+start_post() {
+    # Wait for qBittorrent Web UI to be ready before declaring service started
+    # Extract host and port from QBITTORRENT_HOST (e.g., http://localhost:8080)
+    local qb_host="${QBITTORRENT_HOST:-http://localhost:8080}"
+    local qb_port=$(echo "$qb_host" | sed -n 's/.*:\([0-9]\+\).*/\1/p')
+    local qb_hostname=$(echo "$qb_host" | sed -n 's|.*://\([^:/]*\).*|\1|p')
+    
+    # Default to localhost:8080 if parsing fails
+    qb_hostname="${qb_hostname:-localhost}"
+    qb_port="${qb_port:-8080}"
+    
+    einfo "Waiting for qBittorrent Web UI at ${qb_hostname}:${qb_port}..."
+    
+    local retries=30
+    local connected=false
+    
+    # Try to connect using nc if available
+    if command -v nc >/dev/null 2>&1; then
+        while [ $retries -gt 0 ]; do
+            if nc -z "$qb_hostname" "$qb_port" 2>/dev/null; then
+                connected=true
+                break
+            fi
+            sleep 1
+            retries=$((retries - 1))
+        done
+    else
+        # Fallback: try HTTP request using wget or curl
+        while [ $retries -gt 0 ]; do
+            if command -v wget >/dev/null 2>&1; then
+                if wget -q -O /dev/null --timeout=1 "$qb_host/api/v2/app/version" 2>/dev/null; then
+                    connected=true
+                    break
+                fi
+            elif command -v curl >/dev/null 2>&1; then
+                if curl -s -f --connect-timeout 1 "$qb_host/api/v2/app/version" >/dev/null 2>&1; then
+                    connected=true
+                    break
+                fi
+            else
+                # No tools available, skip check with warning
+                ewarn "Neither nc, wget, nor curl available to verify qBittorrent readiness"
+                return 0
+            fi
+            sleep 1
+            retries=$((retries - 1))
+        done
+    fi
+    
+    if [ "$connected" = true ]; then
+        einfo "qBittorrent Web UI is ready"
+        return 0
+    else
+        ewarn "qBittorrent Web UI did not become ready in time"
+        ewarn "Service may fail to connect initially but will retry"
+        return 0  # Don't fail service start, just warn
+    fi
+}
+
 stop() {
     ebegin "Stopping ${name}"
     start-stop-daemon --stop \
