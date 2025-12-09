@@ -6,14 +6,14 @@ set -e
 echo "Installing PIA qBittorrent Sync Service..."
 
 # Detect init system
-if [ -d "/etc/init.d" ] && [ ! -d "/etc/systemd/system" ]; then
-    INIT_SYSTEM="openrc"
-    echo "Detected OpenRC (Alpine Linux)"
-elif [ -d "/etc/systemd/system" ]; then
+if command -v systemctl &> /dev/null && [ -d "/etc/systemd/system" ]; then
     INIT_SYSTEM="systemd"
     echo "Detected systemd"
+elif command -v rc-update &> /dev/null && [ -f "/sbin/openrc-run" ]; then
+    INIT_SYSTEM="openrc"
+    echo "Detected OpenRC (Alpine Linux)"
 else
-    echo "Could not detect init system"
+    echo "Could not detect init system (tried systemd and OpenRC)"
     exit 1
 fi
 
@@ -26,7 +26,16 @@ fi
 # Install Python dependencies
 echo "Installing Python dependencies..."
 if command -v apk &> /dev/null; then
+    # Alpine Linux
     apk add --no-cache python3 py3-pip py3-virtualenv
+    # Install netcat for qBittorrent readiness checks (used in OpenRC service)
+    if ! command -v nc &> /dev/null; then
+        echo "Installing netcat for service health checks..."
+        if ! (apk add --no-cache netcat-openbsd 2>/dev/null || apk add --no-cache busybox-extras 2>/dev/null); then
+            echo "Warning: Could not install netcat. Service health checks may not work optimally."
+            echo "You can install it manually later with: apk add netcat-openbsd"
+        fi
+    fi
 else
     apt-get update && apt-get install -y python3 python3-pip python3-venv || \
     yum install -y python3 python3-pip || \
