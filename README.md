@@ -211,7 +211,7 @@ If you still experience issues, you can add a `start_post()` function to your qB
 start_post() {
     # Wait until WebUI port is listening before declaring service ready
     local retries=30
-    local port="${QBITTORRENT_PORT:-8080}"  # Adjust if using different port
+    local port="${QBITTORRENT_PORT:-8080}"  # Set to match your qBittorrent Web UI port; note this is separate from QBITTORRENT_HOST used by pia-qbittorrent-sync
     
     einfo "Waiting for qBittorrent Web UI on port ${port}..."
     
