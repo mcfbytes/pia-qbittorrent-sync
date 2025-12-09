@@ -93,7 +93,7 @@ start_post() {
         # Fallback: try HTTP request using wget or curl
         while [ $retries -gt 0 ]; do
             if command -v wget >/dev/null 2>&1; then
-                if wget -q -O /dev/null --timeout=1 "$qb_host/api/v2/app/version" 2>/dev/null; then
+                if wget -q -O /dev/null --connect-timeout=1 --timeout=5 "$qb_host/api/v2/app/version" 2>/dev/null; then
                     connected=true
                     break
                 fi
