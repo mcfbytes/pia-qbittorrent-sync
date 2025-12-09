@@ -56,12 +56,16 @@ start_post() {
     # Wait for qBittorrent Web UI to be ready before declaring service started
     # Extract host and port from QBITTORRENT_HOST (e.g., http://localhost:8080)
     local qb_host="${QBITTORRENT_HOST:-http://localhost:8080}"
+    # Ensure protocol is present; if missing, prepend http://
+    if ! echo "$qb_host" | grep -q "://"; then
+        qb_host="http://$qb_host"
+    fi
+    # Extract hostname (handles both with and without port)
     local qb_hostname=$(echo "$qb_host" | sed -n 's|.*://\([^:/]*\).*|\1|p')
-    local qb_port=$(echo "$qb_host" | sed -n 's/.*:\([0-9]\+\)$/\1/p')
+    # Extract port if present, otherwise use default based on protocol
+    local qb_port=$(echo "$qb_host" | sed -n 's|.*:\([0-9]\+\)\(/.*\)*$|\1|p')
     
-    # Default to localhost:8080 if parsing fails
     qb_hostname="${qb_hostname:-localhost}"
-    # If port not found in URL, use default based on protocol
     if [ -z "$qb_port" ]; then
         if echo "$qb_host" | grep -q "^https://"; then
             qb_port="443"
