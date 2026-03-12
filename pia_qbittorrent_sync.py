@@ -74,7 +74,13 @@ if QBITTORRENT_USERNAME == 'admin' and QBITTORRENT_PASSWORD == 'adminadmin':
 # Setup logging - use only one handler to avoid duplicates
 log_handler = None
 if os.access(os.path.dirname(LOG_FILE) or '.', os.W_OK):
-    log_handler = logging.FileHandler(LOG_FILE)
+    # Create log file atomically with owner-only permissions (600) to avoid a
+    # race condition where the file is briefly readable by other users.
+    try:
+        log_fd = os.open(LOG_FILE, os.O_CREAT | os.O_WRONLY | os.O_APPEND, 0o600)
+        log_handler = logging.StreamHandler(open(log_fd, 'a'))
+    except OSError:
+        log_handler = logging.StreamHandler()
 else:
     log_handler = logging.StreamHandler()
 
@@ -213,9 +219,16 @@ class PIAPortForwarder:
                 if self.token:
                     # Save token for future use
                     try:
-                        os.makedirs(os.path.dirname(self.token_file), exist_ok=True)
-                        with open(self.token_file, 'w') as f:
-                            f.write(self.token)
+                        token_dir = os.path.dirname(self.token_file)
+                        if token_dir:
+                            os.makedirs(token_dir, mode=0o700, exist_ok=True)
+                        # Write token atomically with owner-only permissions (600)
+                        # to avoid a race condition where the file is briefly readable.
+                        token_fd = os.open(self.token_file, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+                        try:
+                            os.write(token_fd, self.token.encode())
+                        finally:
+                            os.close(token_fd)
                         logger.info(f"Saved new PIA token to {self.token_file}")
                     except Exception as e:
                         logger.warning(f"Failed to save token: {e}")
