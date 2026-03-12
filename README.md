@@ -80,6 +80,14 @@ python3 -m venv /opt/pia-qbittorrent-sync/venv
 sudo cp pia_qbittorrent_sync.py /opt/pia-qbittorrent-sync/
 sudo chmod +x /opt/pia-qbittorrent-sync/pia_qbittorrent_sync.py
 
+# Create the dedicated service user (idempotent – safe to re-run)
+# Alpine Linux:
+if ! getent group pia-sync >/dev/null 2>&1; then sudo addgroup -S pia-sync; fi
+if ! id -u pia-sync >/dev/null 2>&1; then sudo adduser -S -D -H -G pia-sync -s /sbin/nologin pia-sync; fi
+# Debian/Ubuntu / other systemd distros:
+if ! getent group pia-sync >/dev/null 2>&1; then sudo groupadd --system pia-sync; fi
+if ! id -u pia-sync >/dev/null 2>&1; then sudo useradd --system --no-create-home --gid pia-sync --shell /usr/sbin/nologin --comment "PIA qBittorrent Sync Service" pia-sync; fi
+
 # For systemd (most Linux distros):
 sudo cp pia-qbittorrent-sync.service /etc/systemd/system/
 sudo systemctl daemon-reload
@@ -89,12 +97,16 @@ sudo cp pia-qbittorrent-sync.openrc /etc/init.d/pia-qbittorrent-sync
 sudo chmod +x /etc/init.d/pia-qbittorrent-sync
 sudo cp pia-qbittorrent-sync.conf /etc/conf.d/pia-qbittorrent-sync
 
-# Create log directory
+# OpenRC only: create log file and token directory (systemd manages these automatically
+# via LogsDirectory= and RuntimeDirectory= in the unit file))
 sudo mkdir -p /var/log
 sudo touch /var/log/pia_qbittorrent_sync.log
+sudo chown pia-sync:pia-sync /var/log/pia_qbittorrent_sync.log
+sudo chmod 640 /var/log/pia_qbittorrent_sync.log
 
-# Create token directory
 sudo mkdir -p /run/pia
+sudo chown pia-sync:pia-sync /run/pia
+sudo chmod 700 /run/pia
 ```
 
 ### 3. Configure the service
@@ -161,7 +173,7 @@ sudo journalctl -u pia-qbittorrent-sync.service -f
 sudo journalctl -u pia-qbittorrent-sync.service
 
 # Log file
-sudo tail -f /var/log/pia_qbittorrent_sync.log
+sudo tail -f /var/log/pia-qbittorrent-sync/pia_qbittorrent_sync.log
 ```
 
 ### Restart service
@@ -183,13 +195,13 @@ All configuration is done via environment variables in the systemd service file:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PIA_GATEWAY` | `10.0.0.1` | PIA WireGuard gateway IP |
-| `PIA_TOKEN_FILE` | `/var/run/pia_token` | Location to store PIA token |
+| `PIA_TOKEN_FILE` | `/run/pia/token` | Location to store PIA token |
 | `QBITTORRENT_HOST` | `http://localhost:8080` | qBittorrent Web UI URL |
 | `QBITTORRENT_USERNAME` | `admin` | qBittorrent username |
 | `QBITTORRENT_PASSWORD` | `adminadmin` | qBittorrent password |
 | `CHECK_INTERVAL` | `300` | Check interval in seconds |
 | `LOG_LEVEL` | `INFO` | Logging level |
-| `LOG_FILE` | `/var/log/pia_qbittorrent_sync.log` | Log file location |
+| `LOG_FILE` | `/var/log/pia-qbittorrent-sync/pia_qbittorrent_sync.log` | Log file location |
 
 ## How It Works
 
@@ -301,18 +313,22 @@ curl http://localhost:8080/api/v2/app/version
 
 ### Permission issues
 
-Ensure the service has write permissions to log directories:
+Ensure the service user owns the log file and token directory (OpenRC only; systemd manages these automatically):
 ```bash
-sudo chown root:root /var/log/pia_qbittorrent_sync.log
-sudo chmod 644 /var/log/pia_qbittorrent_sync.log
+sudo chown pia-sync:pia-sync /var/log/pia_qbittorrent_sync.log
+sudo chmod 640 /var/log/pia_qbittorrent_sync.log
+sudo chown pia-sync:pia-sync /run/pia
+sudo chmod 700 /run/pia
 ```
 
 ## Security Notes
 
+- The service runs as the dedicated unprivileged system user `pia-sync` (created automatically by `install.sh`)
 - Store qBittorrent credentials securely
 - Consider using a dedicated qBittorrent user with limited permissions
-- The service runs as root by default to access network interfaces
-- Systemd security hardening is enabled in the service file
+- The token directory `/run/pia` is managed by systemd (`RuntimeDirectory=`) and recreated on every boot with mode `0700` owned by `pia-sync`; for OpenRC it is created by the installer
+- The log directory `/var/log/pia-qbittorrent-sync/` is managed by systemd (`LogsDirectory=`) and created with mode `0750` owned by `pia-sync`; for OpenRC it is created by the installer
+- Systemd security hardening is enabled in the service file (`NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=strict`, `ProtectHome`)
 
 ## License
 
