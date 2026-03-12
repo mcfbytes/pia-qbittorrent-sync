@@ -42,6 +42,39 @@ else
     true
 fi
 
+# Create dedicated service user
+echo "Creating dedicated service user 'pia-sync'..."
+if command -v apk &> /dev/null; then
+    # Alpine Linux: use busybox adduser/addgroup
+    if ! getent group pia-sync >/dev/null 2>&1; then
+        addgroup -S pia-sync
+    else
+        echo "Group 'pia-sync' already exists"
+    fi
+    if ! id -u pia-sync &>/dev/null 2>&1; then
+        adduser -S -D -H -G pia-sync -s /sbin/nologin pia-sync
+    else
+        echo "User 'pia-sync' already exists"
+    fi
+else
+    # systemd-based distros: ensure group and user exist
+    if ! getent group pia-sync >/dev/null 2>&1; then
+        if command -v groupadd &>/dev/null; then
+            groupadd --system pia-sync 2>/dev/null || groupadd pia-sync
+        fi
+    else
+        echo "Group 'pia-sync' already exists"
+    fi
+    if ! id -u pia-sync &>/dev/null 2>&1; then
+        NOLOGIN=$(command -v nologin 2>/dev/null || echo /bin/false)
+        useradd --system --no-create-home --shell "$NOLOGIN" \
+            --gid pia-sync \
+            --comment "PIA qBittorrent Sync Service" pia-sync
+    else
+        echo "User 'pia-sync' already exists"
+    fi
+fi
+
 # Create installation directory
 echo "Creating installation directory..."
 mkdir -p /opt/pia-qbittorrent-sync
@@ -101,15 +134,18 @@ else
     systemctl daemon-reload
 fi
 
-# Create log directory and file
-echo "Setting up logging..."
-mkdir -p /var/log
-touch /var/log/pia_qbittorrent_sync.log
-chmod 600 /var/log/pia_qbittorrent_sync.log
+# Create log directory and token directory for OpenRC (systemd handles these via LogsDirectory= and RuntimeDirectory=)
+if [ "$INIT_SYSTEM" = "openrc" ]; then
+    echo "Setting up logging and token directory for OpenRC..."
+    mkdir -p /var/log
+    touch /var/log/pia_qbittorrent_sync.log
+    chown pia-sync:pia-sync /var/log/pia_qbittorrent_sync.log
+    chmod 640 /var/log/pia_qbittorrent_sync.log
 
-# Create token directory
-mkdir -p /run/pia
-chmod 700 /run/pia
+    mkdir -p /run/pia
+    chown pia-sync:pia-sync /run/pia
+    chmod 700 /run/pia
+fi
 
 echo ""
 echo "Installation complete!"
