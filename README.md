@@ -80,6 +80,15 @@ python3 -m venv /opt/pia-qbittorrent-sync/venv
 sudo cp pia_qbittorrent_sync.py /opt/pia-qbittorrent-sync/
 sudo chmod +x /opt/pia-qbittorrent-sync/pia_qbittorrent_sync.py
 
+# Create the dedicated service user (skip if it already exists)
+# Alpine Linux:
+sudo addgroup -S pia-sync && sudo adduser -S -D -H -G pia-sync -s /sbin/nologin pia-sync
+# Debian/Ubuntu / other systemd distros:
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin --comment "PIA qBittorrent Sync Service" pia-sync
+
+# Set ownership of install directory
+sudo chown -R pia-sync:pia-sync /opt/pia-qbittorrent-sync
+
 # For systemd (most Linux distros):
 sudo cp pia-qbittorrent-sync.service /etc/systemd/system/
 sudo systemctl daemon-reload
@@ -89,12 +98,16 @@ sudo cp pia-qbittorrent-sync.openrc /etc/init.d/pia-qbittorrent-sync
 sudo chmod +x /etc/init.d/pia-qbittorrent-sync
 sudo cp pia-qbittorrent-sync.conf /etc/conf.d/pia-qbittorrent-sync
 
-# Create log directory
+# Create log directory and set permissions
 sudo mkdir -p /var/log
 sudo touch /var/log/pia_qbittorrent_sync.log
+sudo chown pia-sync:pia-sync /var/log/pia_qbittorrent_sync.log
+sudo chmod 640 /var/log/pia_qbittorrent_sync.log
 
-# Create token directory
+# Create token directory with restricted permissions
 sudo mkdir -p /run/pia
+sudo chown pia-sync:pia-sync /run/pia
+sudo chmod 700 /run/pia
 ```
 
 ### 3. Configure the service
@@ -301,18 +314,22 @@ curl http://localhost:8080/api/v2/app/version
 
 ### Permission issues
 
-Ensure the service has write permissions to log directories:
+Ensure the service user owns the log file and token directory:
 ```bash
-sudo chown root:root /var/log/pia_qbittorrent_sync.log
-sudo chmod 644 /var/log/pia_qbittorrent_sync.log
+sudo chown pia-sync:pia-sync /var/log/pia_qbittorrent_sync.log
+sudo chmod 640 /var/log/pia_qbittorrent_sync.log
+sudo chown pia-sync:pia-sync /run/pia
+sudo chmod 700 /run/pia
 ```
 
 ## Security Notes
 
+- The service runs as the dedicated unprivileged system user `pia-sync` (created automatically by `install.sh`)
 - Store qBittorrent credentials securely
 - Consider using a dedicated qBittorrent user with limited permissions
-- The service runs as root by default to access network interfaces
-- Systemd security hardening is enabled in the service file
+- The token directory `/run/pia` is created with mode `700` (accessible only by `pia-sync`)
+- The log file `/var/log/pia_qbittorrent_sync.log` is created with mode `640` (readable by group)
+- Systemd security hardening is enabled in the service file (`NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=strict`, `ProtectHome`)
 
 ## License
 
