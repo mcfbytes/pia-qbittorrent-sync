@@ -27,8 +27,8 @@ PIA_HOSTNAME = os.getenv('PIA_HOSTNAME')  # Custom hostname for PIA API requests
 PIA_CA_CERT = os.getenv('PIA_CA_CERT')  # Path to CA certificate file for PIA API
 PIA_TOKEN_FILE = os.getenv('PIA_TOKEN_FILE', '/var/run/pia_token')
 QBITTORRENT_HOST = os.getenv('QBITTORRENT_HOST', 'http://localhost:8080')
-QBITTORRENT_USERNAME = os.getenv('QBITTORRENT_USERNAME', 'admin')
-QBITTORRENT_PASSWORD = os.getenv('QBITTORRENT_PASSWORD', 'adminadmin')
+QBITTORRENT_USERNAME = os.getenv('QBITTORRENT_USERNAME')
+QBITTORRENT_PASSWORD = os.getenv('QBITTORRENT_PASSWORD')
 CHECK_INTERVAL = int(os.getenv('CHECK_INTERVAL', '300'))  # 5 minutes default
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 LOG_FILE = os.getenv('LOG_FILE', '/var/log/pia_updater.log')
@@ -604,8 +604,59 @@ class PIAUpdaterService:
         return 0
 
 
+# Stored in normalized (casefolded) form; input credentials are normalized before comparison.
+_INSECURE_CREDENTIAL_VALUES = {
+    'admin',
+    'adminadmin',
+    'password',
+    'change_me',
+    'changeme',
+}
+
+
+def _normalize_credential(value: Optional[str]) -> str:
+    """Normalize a credential value for validation (strip whitespace and case-fold).
+
+    Returns an empty string if value is None, enabling the same emptiness check
+    for both unset (None) and blank ('  ') values.
+    """
+    if value is None:
+        return ""
+    return value.strip().casefold()
+
+
+def _validate_credentials() -> bool:
+    """Validate that qBittorrent credentials are set and not using known insecure defaults."""
+    errors = []
+
+    normalized_username = _normalize_credential(QBITTORRENT_USERNAME)
+    normalized_password = _normalize_credential(QBITTORRENT_PASSWORD)
+
+    if not normalized_username:
+        errors.append("QBITTORRENT_USERNAME is not set")
+    elif normalized_username in _INSECURE_CREDENTIAL_VALUES:
+        errors.append("QBITTORRENT_USERNAME is set to a known insecure default value")
+
+    if not normalized_password:
+        errors.append("QBITTORRENT_PASSWORD is not set")
+    elif normalized_password in _INSECURE_CREDENTIAL_VALUES:
+        errors.append("QBITTORRENT_PASSWORD is set to a known insecure default value")
+
+    if errors:
+        for error in errors:
+            logger.error(f"Credential configuration error: {error}")
+        logger.error(
+            "Service cannot start with missing or insecure credentials. "
+            "Set QBITTORRENT_USERNAME and QBITTORRENT_PASSWORD to secure values."
+        )
+        return False
+    return True
+
+
 def main():
     """Entry point for the service."""
+    if not _validate_credentials():
+        return os.EX_CONFIG
     service = PIAUpdaterService()
     return service.run()
 
