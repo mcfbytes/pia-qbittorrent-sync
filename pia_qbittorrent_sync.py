@@ -55,7 +55,7 @@ except ValueError as e:
     sys.exit(1)
 
 # Validate that credentials or a token file are available for PIA authentication
-if not PIA_USERNAME and not PIA_PASSWORD and not os.path.exists(PIA_TOKEN_FILE):
+if not (PIA_USERNAME and PIA_PASSWORD) and not os.path.exists(PIA_TOKEN_FILE):
     print(
         "ERROR: PIA credentials not configured. "
         "Set PIA_USERNAME and PIA_PASSWORD, or provide a valid PIA_TOKEN_FILE.",
