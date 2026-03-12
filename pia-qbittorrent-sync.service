@@ -5,7 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=root
+User=pia-sync
+Group=pia-sync
 WorkingDirectory=/opt/pia-qbittorrent-sync
 ExecStart=/opt/pia-qbittorrent-sync/venv/bin/python3 /opt/pia-qbittorrent-sync/pia_qbittorrent_sync.py
 Restart=always
@@ -21,7 +22,7 @@ Environment="PIA_GATEWAY=10.0.0.1"
 Environment="PIA_CA_CERT=/etc/pia/ca.rsa.4096.crt"
 # PIA_HOSTNAME should match the server name in the PIA CA certificate.
 # Environment="PIA_HOSTNAME=your_server_hostname"
-Environment="PIA_TOKEN_FILE=/var/run/pia_token"
+Environment="PIA_TOKEN_FILE=/run/pia/token"
 Environment="QBITTORRENT_HOST=http://localhost:8080"
 # WARNING: Replace CHANGE_ME with your actual qBittorrent credentials before starting the service.
 # The service will refuse to start if these are left as CHANGE_ME or any other known default.
@@ -36,7 +37,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/log /var/run
+ReadWritePaths=/var/log/pia_qbittorrent_sync.log /run/pia
 
 [Install]
 WantedBy=multi-user.target
