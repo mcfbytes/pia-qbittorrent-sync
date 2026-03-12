@@ -93,6 +93,9 @@ echo "Copying service files..."
 cp pia_qbittorrent_sync.py /opt/pia-qbittorrent-sync/
 chmod +x /opt/pia-qbittorrent-sync/pia_qbittorrent_sync.py
 
+# Set ownership of the entire install directory to the service user
+chown -R pia-sync:pia-sync /opt/pia-qbittorrent-sync
+
 # Install appropriate service file
 if [ "$INIT_SYSTEM" = "openrc" ]; then
     echo "Installing OpenRC service..."
