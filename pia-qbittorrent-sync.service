@@ -17,6 +17,11 @@ RestartPreventExitStatus=78
 
 # Environment variables (customize these)
 Environment="PIA_GATEWAY=10.0.0.1"
+# PIA_CA_CERT is required. The service will not start without it.
+# Download ca.rsa.4096.crt from the PIA manual connection guide.
+Environment="PIA_CA_CERT=/etc/pia/ca.rsa.4096.crt"
+# PIA_HOSTNAME should match the server name in the PIA CA certificate.
+# Environment="PIA_HOSTNAME=your_server_hostname"
 Environment="PIA_TOKEN_FILE=/run/pia/token"
 Environment="QBITTORRENT_HOST=http://localhost:8080"
 # WARNING: Replace CHANGE_ME with your actual qBittorrent credentials before starting the service.
