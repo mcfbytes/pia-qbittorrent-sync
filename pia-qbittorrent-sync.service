@@ -20,8 +20,10 @@ Environment="PIA_CA_CERT=/etc/pia/ca.rsa.4096.crt"
 # Environment="PIA_HOSTNAME=your_server_hostname"
 Environment="PIA_TOKEN_FILE=/var/run/pia_token"
 Environment="QBITTORRENT_HOST=http://localhost:8080"
-Environment="QBITTORRENT_USERNAME=admin"
-Environment="QBITTORRENT_PASSWORD=adminadmin"
+# WARNING: Replace CHANGE_ME with your actual qBittorrent credentials before starting the service.
+# The service will refuse to start if these are left as CHANGE_ME or any other known default.
+Environment="QBITTORRENT_USERNAME=CHANGE_ME"
+Environment="QBITTORRENT_PASSWORD=CHANGE_ME"
 Environment="CHECK_INTERVAL=300"
 Environment="LOG_LEVEL=INFO"
 Environment="LOG_FILE=/var/log/pia_qbittorrent_sync.log"
