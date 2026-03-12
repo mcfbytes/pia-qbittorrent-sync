@@ -12,6 +12,7 @@ import json
 import base64
 import logging
 import signal
+import tempfile
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.connection import create_connection
@@ -36,7 +37,18 @@ LOG_FILE = os.getenv('LOG_FILE', '/var/log/pia_updater.log')
 # Setup logging - use only one handler to avoid duplicates
 log_handler = None
 if os.access(os.path.dirname(LOG_FILE) or '.', os.W_OK):
-    log_handler = logging.FileHandler(LOG_FILE)
+    # Open (or create) the log file, then enforce 0600 permissions regardless of
+    # whether the file already existed with broader permissions.
+    try:
+        log_fd = os.open(LOG_FILE, os.O_CREAT | os.O_WRONLY | os.O_APPEND, 0o600)
+        try:
+            os.fchmod(log_fd, 0o600)
+            log_handler = logging.StreamHandler(os.fdopen(log_fd, 'a'))
+        except OSError:
+            os.close(log_fd)
+            log_handler = logging.StreamHandler()
+    except OSError:
+        log_handler = logging.StreamHandler()
 else:
     log_handler = logging.StreamHandler()
 
@@ -150,9 +162,30 @@ class PIAPortForwarder:
                 if self.token:
                     # Save token for future use
                     try:
-                        os.makedirs(os.path.dirname(self.token_file), exist_ok=True)
-                        with open(self.token_file, 'w') as f:
-                            f.write(self.token)
+                        token_dir = os.path.dirname(self.token_file) or '.'
+                        os.makedirs(token_dir, mode=0o700, exist_ok=True)
+                        # Write to a uniquely-named temp file in the same directory,
+                        # then atomically replace the target so a crash mid-write
+                        # never leaves a partial/empty token file. mkstemp gives a
+                        # unique name (no predictable .tmp race), and fchmod enforces
+                        # 0600 even when the token file already existed with broader
+                        # permissions.
+                        tmp_fd, tmp_file = tempfile.mkstemp(dir=token_dir, prefix='.token_')
+                        try:
+                            os.fchmod(tmp_fd, 0o600)
+                            os.write(tmp_fd, self.token.encode())
+                            os.close(tmp_fd)
+                            tmp_fd = -1
+                            os.replace(tmp_file, self.token_file)
+                            tmp_file = None
+                        finally:
+                            if tmp_fd != -1:
+                                os.close(tmp_fd)
+                            if tmp_file is not None:
+                                try:
+                                    os.unlink(tmp_file)
+                                except OSError:
+                                    pass
                         logger.info(f"Saved new PIA token to {self.token_file}")
                     except Exception as e:
                         logger.warning(f"Failed to save token: {e}")

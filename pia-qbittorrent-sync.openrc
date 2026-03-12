@@ -22,7 +22,7 @@ depend() {
 start_pre() {
     # Create log directory if it doesn't exist
     checkpath --directory --mode 0755 /var/log
-    checkpath --file --mode 0640 --owner pia-sync:pia-sync /var/log/pia_qbittorrent_sync.log
+    checkpath --file --mode 0600 --owner pia-sync:pia-sync /var/log/pia_qbittorrent_sync.log
     
     # Create token directory if it doesn't exist
     checkpath --directory --mode 0700 --owner pia-sync:pia-sync /run/pia
