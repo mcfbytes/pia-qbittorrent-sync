@@ -27,8 +27,8 @@ PIA_HOSTNAME = os.getenv('PIA_HOSTNAME')  # Custom hostname for PIA API requests
 PIA_CA_CERT = os.getenv('PIA_CA_CERT')  # Path to CA certificate file for PIA API
 PIA_TOKEN_FILE = os.getenv('PIA_TOKEN_FILE', '/var/run/pia_token')
 QBITTORRENT_HOST = os.getenv('QBITTORRENT_HOST', 'http://localhost:8080')
-QBITTORRENT_USERNAME = os.getenv('QBITTORRENT_USERNAME', 'admin')
-QBITTORRENT_PASSWORD = os.getenv('QBITTORRENT_PASSWORD', 'adminadmin')
+QBITTORRENT_USERNAME = os.getenv('QBITTORRENT_USERNAME')
+QBITTORRENT_PASSWORD = os.getenv('QBITTORRENT_PASSWORD')
 CHECK_INTERVAL = int(os.getenv('CHECK_INTERVAL', '300'))  # 5 minutes default
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 LOG_FILE = os.getenv('LOG_FILE', '/var/log/pia_updater.log')
@@ -604,8 +604,37 @@ class PIAUpdaterService:
         return 0
 
 
+_INSECURE_CREDENTIAL_VALUES = {'admin', 'adminadmin', 'password', 'CHANGE_ME', 'changeme'}
+
+
+def _validate_credentials() -> bool:
+    """Validate that qBittorrent credentials are set and not using known insecure defaults."""
+    errors = []
+    if not QBITTORRENT_USERNAME:
+        errors.append("QBITTORRENT_USERNAME is not set")
+    elif QBITTORRENT_USERNAME in _INSECURE_CREDENTIAL_VALUES:
+        errors.append("QBITTORRENT_USERNAME is set to a known insecure default value")
+
+    if not QBITTORRENT_PASSWORD:
+        errors.append("QBITTORRENT_PASSWORD is not set")
+    elif QBITTORRENT_PASSWORD in _INSECURE_CREDENTIAL_VALUES:
+        errors.append("QBITTORRENT_PASSWORD is set to a known insecure default value")
+
+    if errors:
+        for error in errors:
+            logger.error(f"Credential configuration error: {error}")
+        logger.error(
+            "Service cannot start with missing or insecure credentials. "
+            "Set QBITTORRENT_USERNAME and QBITTORRENT_PASSWORD to secure values."
+        )
+        return False
+    return True
+
+
 def main():
     """Entry point for the service."""
+    if not _validate_credentials():
+        return 1
     service = PIAUpdaterService()
     return service.run()
 
