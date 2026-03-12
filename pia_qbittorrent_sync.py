@@ -73,10 +73,20 @@ class PIAPortForwarder:
                 "certificate file (e.g. ca.rsa.4096.crt). Running without a "
                 "CA certificate disables SSL verification and is not permitted."
             )
-        if not Path(ca_cert).is_file():
+        ca_cert_path = Path(ca_cert)
+        if not ca_cert_path.is_file():
             raise ValueError(
                 f"PIA_CA_CERT file not found or is not a regular file: {ca_cert!r}. "
-                "Ensure the path is correct and the file is readable."
+                "Ensure the path is correct and points to an existing certificate file."
+            )
+        try:
+            # Explicitly verify that the CA certificate is readable by this process
+            with ca_cert_path.open("rb"):
+                pass
+        except OSError as e:
+            raise ValueError(
+                f"PIA_CA_CERT file exists but is not readable: {ca_cert!r}. "
+                f"Check file permissions and ownership. Underlying error: {e}"
             )
         self.ca_cert = ca_cert
 
