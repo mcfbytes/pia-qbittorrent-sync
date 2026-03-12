@@ -57,16 +57,31 @@ class PIAPortForwarder:
         self.username = username
         self.password = password
         self.hostname = hostname
-        self.ca_cert = ca_cert
         self.token = None
         self.payload = None
         self.signature = None
         self.current_port = None
         self.port_expiry = None
         self.last_refresh = None
-        
-        # Apply hostname-to-IP patching globally if both are configured
-        if self.hostname and self.ca_cert:
+
+        # PIA_CA_CERT is mandatory – connecting to the PIA gateway without a CA
+        # certificate would silently disable SSL verification and expose the
+        # connection to man-in-the-middle attacks.
+        if not ca_cert:
+            raise ValueError(
+                "PIA_CA_CERT is required. Set it to the path of the PIA CA "
+                "certificate file (e.g. ca.rsa.4096.crt). Running without a "
+                "CA certificate disables SSL verification and is not permitted."
+            )
+        if not Path(ca_cert).is_file():
+            raise ValueError(
+                f"PIA_CA_CERT file not found or is not a regular file: {ca_cert!r}. "
+                "Ensure the path is correct and the file is readable."
+            )
+        self.ca_cert = ca_cert
+
+        # Apply hostname-to-IP patching globally if a hostname override is configured
+        if self.hostname:
             self._patch_urllib3_connection()
     
     def _patch_urllib3_connection(self):
@@ -100,7 +115,7 @@ class PIAPortForwarder:
         """Create a requests session with custom hostname handling for cert verification."""
         session = requests.Session()
         
-        if self.hostname and self.ca_cert:
+        if self.hostname:
             # Create a custom adapter for SNI hostname override
             hostname = self.hostname
             
@@ -180,8 +195,9 @@ class PIAPortForwarder:
             # Create session with custom hostname handling
             session = self._create_session_with_host_override()
             
-            # Always connect to gateway IP, but use hostname in URL for SSL cert verification if configured
-            if self.hostname and self.ca_cert:
+            # Use hostname in URL when configured so SSL cert matches; otherwise
+            # connect directly to the gateway IP (requires cert to cover the IP).
+            if self.hostname:
                 url = f'https://{self.hostname}:19999/getSignature'
             else:
                 url = f'https://{self.gateway}:19999/getSignature'
@@ -189,7 +205,7 @@ class PIAPortForwarder:
             response = session.get(
                 url,
                 params={'token': self.token},
-                verify=self.ca_cert if self.ca_cert else False,
+                verify=self.ca_cert,
                 timeout=10
             )
             
@@ -262,8 +278,9 @@ class PIAPortForwarder:
             # Create session with custom hostname handling
             session = self._create_session_with_host_override()
             
-            # Always connect to gateway IP, but use hostname in URL for SSL cert verification if configured
-            if self.hostname and self.ca_cert:
+            # Use hostname in URL when configured so SSL cert matches; otherwise
+            # connect directly to the gateway IP (requires cert to cover the IP).
+            if self.hostname:
                 url = f'https://{self.hostname}:19999/bindPort'
             else:
                 url = f'https://{self.gateway}:19999/bindPort'
@@ -274,7 +291,7 @@ class PIAPortForwarder:
                     'payload': self.payload,
                     'signature': self.signature
                 },
-                verify=self.ca_cert if self.ca_cert else False,
+                verify=self.ca_cert,
                 timeout=10
             )
             
@@ -493,7 +510,11 @@ class PIAUpdaterService:
     """Main service that coordinates PIA and qBittorrent."""
     
     def __init__(self):
-        self.pia = PIAPortForwarder(PIA_GATEWAY, PIA_TOKEN_FILE, PIA_USERNAME, PIA_PASSWORD, PIA_HOSTNAME, PIA_CA_CERT)
+        try:
+            self.pia = PIAPortForwarder(PIA_GATEWAY, PIA_TOKEN_FILE, PIA_USERNAME, PIA_PASSWORD, PIA_HOSTNAME, PIA_CA_CERT)
+        except ValueError as e:
+            logger.error(f"Configuration error: {e}")
+            raise
         self.qbt = QBittorrentClient(QBITTORRENT_HOST, QBITTORRENT_USERNAME, QBITTORRENT_PASSWORD)
         self.running = False
         
@@ -606,7 +627,11 @@ class PIAUpdaterService:
 
 def main():
     """Entry point for the service."""
-    service = PIAUpdaterService()
+    try:
+        service = PIAUpdaterService()
+    except ValueError:
+        # Configuration error already logged by PIAUpdaterService.__init__
+        return 1
     return service.run()
 
 
