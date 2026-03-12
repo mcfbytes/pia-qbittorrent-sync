@@ -183,13 +183,25 @@ All configuration is done via environment variables in the systemd service file:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PIA_GATEWAY` | `10.0.0.1` | PIA WireGuard gateway IP |
-| `PIA_TOKEN_FILE` | `/var/run/pia_token` | Location to store PIA token |
+| `PIA_CA_CERT` | *(required)* | Path to PIA CA certificate file (e.g. `ca.rsa.4096.crt`). The service will refuse to start if this is not set. |
+| `PIA_HOSTNAME` | *(optional)* | PIA server hostname (e.g. `mexico409`). **Strongly recommended.** Without it the gateway IP is used in the TLS handshake, which will fail unless the CA certificate covers the IP. Set this when using the standard PIA CA cert (which is hostname-based). |
+| `PIA_USERNAME` | — | PIA account username (needed when no token file exists) |
+| `PIA_PASSWORD` | — | PIA account password (needed when no token file exists) |
+| `PIA_TOKEN_FILE` | `/var/run/pia_token` | Location to store/read the PIA auth token |
 | `QBITTORRENT_HOST` | `http://localhost:8080` | qBittorrent Web UI URL |
 | `QBITTORRENT_USERNAME` | `admin` | qBittorrent username |
 | `QBITTORRENT_PASSWORD` | `adminadmin` | qBittorrent password |
 | `CHECK_INTERVAL` | `300` | Check interval in seconds |
 | `LOG_LEVEL` | `INFO` | Logging level |
 | `LOG_FILE` | `/var/log/pia_qbittorrent_sync.log` | Log file location |
+
+### SSL Certificate Verification
+
+`PIA_CA_CERT` is **required**. The service will log an error and exit immediately if it is not set or the file does not exist. This prevents man-in-the-middle attacks against the PIA gateway API.
+
+The PIA CA certificate (`ca.rsa.4096.crt`) is bundled with the [PIA manual connection guide](https://www.privateinternetaccess.com/helpdesk/guides/desktop/linux/linux-manual-connection). Download it and point `PIA_CA_CERT` to its path.
+
+Because PIA gateway certificates are issued for a hostname (not for the gateway IP), you should also set `PIA_HOSTNAME` to the server hostname that matches the certificate. When `PIA_HOSTNAME` is set, the service connects to the gateway IP over TCP but uses the hostname in the TLS handshake so that certificate validation succeeds.
 
 ## How It Works
 
@@ -309,10 +321,12 @@ sudo chmod 644 /var/log/pia_qbittorrent_sync.log
 
 ## Security Notes
 
-- Store qBittorrent credentials securely
-- Consider using a dedicated qBittorrent user with limited permissions
-- The service runs as root by default to access network interfaces
-- Systemd security hardening is enabled in the service file
+- **SSL verification is always enabled.** `PIA_CA_CERT` is mandatory; the service will refuse to start without it.
+- Set `PIA_HOSTNAME` alongside `PIA_CA_CERT` so that SSL hostname validation succeeds (PIA gateway certificates are issued for the server hostname, not the gateway IP).
+- Store qBittorrent credentials securely.
+- Consider using a dedicated qBittorrent user with limited permissions.
+- The service runs as root by default to access network interfaces.
+- Systemd security hardening is enabled in the service file.
 
 ## License
 
