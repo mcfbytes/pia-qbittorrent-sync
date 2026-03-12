@@ -30,14 +30,17 @@ Environment="QBITTORRENT_USERNAME=CHANGE_ME"
 Environment="QBITTORRENT_PASSWORD=CHANGE_ME"
 Environment="CHECK_INTERVAL=300"
 Environment="LOG_LEVEL=INFO"
-Environment="LOG_FILE=/var/log/pia_qbittorrent_sync.log"
+Environment="LOG_FILE=/var/log/pia-qbittorrent-sync/pia_qbittorrent_sync.log"
 
 # Security hardening
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/log/pia_qbittorrent_sync.log /run/pia
+LogsDirectory=pia-qbittorrent-sync
+LogsDirectoryMode=0750
+RuntimeDirectory=pia
+RuntimeDirectoryMode=0700
 
 [Install]
 WantedBy=multi-user.target

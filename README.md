@@ -80,14 +80,13 @@ python3 -m venv /opt/pia-qbittorrent-sync/venv
 sudo cp pia_qbittorrent_sync.py /opt/pia-qbittorrent-sync/
 sudo chmod +x /opt/pia-qbittorrent-sync/pia_qbittorrent_sync.py
 
-# Create the dedicated service user (skip if it already exists)
+# Create the dedicated service user (idempotent – safe to re-run)
 # Alpine Linux:
-sudo addgroup -S pia-sync && sudo adduser -S -D -H -G pia-sync -s /sbin/nologin pia-sync
+if ! getent group pia-sync >/dev/null 2>&1; then sudo addgroup -S pia-sync; fi
+if ! id -u pia-sync >/dev/null 2>&1; then sudo adduser -S -D -H -G pia-sync -s /sbin/nologin pia-sync; fi
 # Debian/Ubuntu / other systemd distros:
-sudo useradd --system --no-create-home --shell /usr/sbin/nologin --comment "PIA qBittorrent Sync Service" pia-sync
-
-# Set ownership of install directory
-sudo chown -R pia-sync:pia-sync /opt/pia-qbittorrent-sync
+if ! getent group pia-sync >/dev/null 2>&1; then sudo groupadd --system pia-sync; fi
+if ! id -u pia-sync >/dev/null 2>&1; then sudo useradd --system --no-create-home --gid pia-sync --shell /usr/sbin/nologin --comment "PIA qBittorrent Sync Service" pia-sync; fi
 
 # For systemd (most Linux distros):
 sudo cp pia-qbittorrent-sync.service /etc/systemd/system/
@@ -98,13 +97,13 @@ sudo cp pia-qbittorrent-sync.openrc /etc/init.d/pia-qbittorrent-sync
 sudo chmod +x /etc/init.d/pia-qbittorrent-sync
 sudo cp pia-qbittorrent-sync.conf /etc/conf.d/pia-qbittorrent-sync
 
-# Create log directory and set permissions
+# OpenRC only: create log file and token directory (systemd manages these automatically
+# via LogsDirectory= and RuntimeDirectory= in the unit file))
 sudo mkdir -p /var/log
 sudo touch /var/log/pia_qbittorrent_sync.log
 sudo chown pia-sync:pia-sync /var/log/pia_qbittorrent_sync.log
 sudo chmod 640 /var/log/pia_qbittorrent_sync.log
 
-# Create token directory with restricted permissions
 sudo mkdir -p /run/pia
 sudo chown pia-sync:pia-sync /run/pia
 sudo chmod 700 /run/pia
@@ -174,7 +173,7 @@ sudo journalctl -u pia-qbittorrent-sync.service -f
 sudo journalctl -u pia-qbittorrent-sync.service
 
 # Log file
-sudo tail -f /var/log/pia_qbittorrent_sync.log
+sudo tail -f /var/log/pia-qbittorrent-sync/pia_qbittorrent_sync.log
 ```
 
 ### Restart service
@@ -200,7 +199,7 @@ All configuration is done via environment variables in the systemd service file:
 | `PIA_HOSTNAME` | *(optional)* | PIA server hostname (e.g. `mexico409`). **Strongly recommended.** Without it the gateway IP is used in the TLS handshake, which will fail unless the CA certificate covers the IP. Set this when using the standard PIA CA cert (which is hostname-based). |
 | `PIA_USERNAME` | — | PIA account username (needed when no token file exists) |
 | `PIA_PASSWORD` | — | PIA account password (needed when no token file exists) |
-| `PIA_TOKEN_FILE` | `/var/run/pia_token` | Location to store/read the PIA auth token |
+| `PIA_TOKEN_FILE` | `/run/pia/token` | Location to store/read the PIA auth token |
 | `QBITTORRENT_HOST` | `http://localhost:8080` | qBittorrent Web UI URL |
 | `QBITTORRENT_USERNAME` | `admin` | qBittorrent username |
 | `QBITTORRENT_PASSWORD` | `adminadmin` | qBittorrent password |
@@ -215,6 +214,7 @@ All configuration is done via environment variables in the systemd service file:
 The PIA CA certificate (`ca.rsa.4096.crt`) is bundled with the [PIA manual connection guide](https://www.privateinternetaccess.com/helpdesk/guides/desktop/linux/linux-manual-connection). Download it and point `PIA_CA_CERT` to its path.
 
 Because PIA gateway certificates are issued for a hostname (not for the gateway IP), you should also set `PIA_HOSTNAME` to the server hostname that matches the certificate. When `PIA_HOSTNAME` is set, the service connects to the gateway IP over TCP but uses the hostname in the TLS handshake so that certificate validation succeeds.
+| `LOG_FILE` | `/var/log/pia-qbittorrent-sync/pia_qbittorrent_sync.log` | Log file location |
 
 ## How It Works
 
@@ -326,7 +326,7 @@ curl http://localhost:8080/api/v2/app/version
 
 ### Permission issues
 
-Ensure the service user owns the log file and token directory:
+Ensure the service user owns the log file and token directory (OpenRC only; systemd manages these automatically):
 ```bash
 sudo chown pia-sync:pia-sync /var/log/pia_qbittorrent_sync.log
 sudo chmod 640 /var/log/pia_qbittorrent_sync.log
@@ -341,8 +341,8 @@ sudo chmod 700 /run/pia
 - Store qBittorrent credentials securely.
 - Consider using a dedicated qBittorrent user with limited permissions.
 - Systemd security hardening is enabled in the service file.
-- The token directory `/run/pia` is created with mode `700` (accessible only by `pia-sync`)
-- The log file `/var/log/pia_qbittorrent_sync.log` is created with mode `640` (readable by group)
+- The token directory `/run/pia` is managed by systemd (`RuntimeDirectory=`) and recreated on every boot with mode `0700` owned by `pia-sync`; for OpenRC it is created by the installer
+- The log directory `/var/log/pia-qbittorrent-sync/` is managed by systemd (`LogsDirectory=`) and created with mode `0750` owned by `pia-sync`; for OpenRC it is created by the installer
 - Systemd security hardening is enabled in the service file (`NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=strict`, `ProtectHome`)
 
 ## License
