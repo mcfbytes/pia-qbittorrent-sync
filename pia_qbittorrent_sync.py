@@ -708,20 +708,42 @@ class PIAUpdaterService:
         return 0
 
 
-_INSECURE_CREDENTIAL_VALUES = {'admin', 'adminadmin', 'password', 'CHANGE_ME', 'changeme'}
+# Stored in normalized (casefolded) form; input credentials are normalized before comparison.
+_INSECURE_CREDENTIAL_VALUES = {
+    'admin',
+    'adminadmin',
+    'password',
+    'change_me',
+    'changeme',
+}
+
+
+def _normalize_credential(value: Optional[str]) -> str:
+    """Normalize a credential value for validation (strip whitespace and case-fold).
+
+    Returns an empty string if value is None, enabling the same emptiness check
+    for both unset (None) and blank ('  ') values.
+    """
+    if value is None:
+        return ""
+    return value.strip().casefold()
 
 
 def _validate_credentials() -> bool:
     """Validate that qBittorrent credentials are set and not using known insecure defaults."""
     errors = []
-    if not QBITTORRENT_USERNAME:
+
+    normalized_username = _normalize_credential(QBITTORRENT_USERNAME)
+    normalized_password = _normalize_credential(QBITTORRENT_PASSWORD)
+
+    if not normalized_username:
         errors.append("QBITTORRENT_USERNAME is not set")
-    elif QBITTORRENT_USERNAME in _INSECURE_CREDENTIAL_VALUES:
+    elif normalized_username in _INSECURE_CREDENTIAL_VALUES:
         errors.append("QBITTORRENT_USERNAME is set to a known insecure default value")
 
-    if not QBITTORRENT_PASSWORD:
+    if not normalized_password:
         errors.append("QBITTORRENT_PASSWORD is not set")
-    elif QBITTORRENT_PASSWORD in _INSECURE_CREDENTIAL_VALUES:
+    elif normalized_password in _INSECURE_CREDENTIAL_VALUES:
         errors.append("QBITTORRENT_PASSWORD is set to a known insecure default value")
 
     if errors:
@@ -738,7 +760,7 @@ def _validate_credentials() -> bool:
 def main():
     """Entry point for the service."""
     if not _validate_credentials():
-        return 1
+        return os.EX_CONFIG
     try:
         service = PIAUpdaterService()
     except ValueError:

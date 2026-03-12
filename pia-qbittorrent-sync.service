@@ -10,6 +10,9 @@ WorkingDirectory=/opt/pia-qbittorrent-sync
 ExecStart=/opt/pia-qbittorrent-sync/venv/bin/python3 /opt/pia-qbittorrent-sync/pia_qbittorrent_sync.py
 Restart=always
 RestartSec=10
+# Exit code 78 (EX_CONFIG) indicates a configuration error (e.g. missing/insecure credentials).
+# Prevent systemd from restarting in a tight loop on misconfiguration.
+RestartPreventExitStatus=78
 
 # Environment variables (customize these)
 Environment="PIA_GATEWAY=10.0.0.1"
