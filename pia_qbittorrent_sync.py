@@ -29,9 +29,47 @@ PIA_TOKEN_FILE = os.getenv('PIA_TOKEN_FILE', '/var/run/pia_token')
 QBITTORRENT_HOST = os.getenv('QBITTORRENT_HOST', 'http://localhost:8080')
 QBITTORRENT_USERNAME = os.getenv('QBITTORRENT_USERNAME', 'admin')
 QBITTORRENT_PASSWORD = os.getenv('QBITTORRENT_PASSWORD', 'adminadmin')
-CHECK_INTERVAL = int(os.getenv('CHECK_INTERVAL', '300'))  # 5 minutes default
-LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 LOG_FILE = os.getenv('LOG_FILE', '/var/log/pia_updater.log')
+
+# Validate LOG_LEVEL
+_LOG_LEVEL_STR = os.getenv('LOG_LEVEL', 'INFO').upper()
+_LOG_LEVEL = getattr(logging, _LOG_LEVEL_STR, None)
+if not isinstance(_LOG_LEVEL, int):
+    print(
+        f"ERROR: Invalid LOG_LEVEL '{os.getenv('LOG_LEVEL')}'. "
+        "Must be one of: DEBUG, INFO, WARNING, ERROR, CRITICAL",
+        file=sys.stderr
+    )
+    sys.exit(1)
+LOG_LEVEL = _LOG_LEVEL_STR
+
+# Validate CHECK_INTERVAL
+try:
+    CHECK_INTERVAL = int(os.getenv('CHECK_INTERVAL', '300'))
+    if CHECK_INTERVAL < 1:
+        raise ValueError("CHECK_INTERVAL must be a positive integer (>= 1 second)")
+    if CHECK_INTERVAL > 86400:
+        raise ValueError("CHECK_INTERVAL must not exceed 86400 seconds (24 hours)")
+except ValueError as e:
+    print(f"ERROR: Invalid CHECK_INTERVAL: {e}", file=sys.stderr)
+    sys.exit(1)
+
+# Validate that credentials or a token file are available for PIA authentication
+if not (PIA_USERNAME and PIA_PASSWORD) and not os.path.exists(PIA_TOKEN_FILE):
+    print(
+        "ERROR: PIA credentials not configured. "
+        "Set PIA_USERNAME and PIA_PASSWORD, or provide a valid PIA_TOKEN_FILE.",
+        file=sys.stderr
+    )
+    sys.exit(1)
+
+# Warn if default qBittorrent credentials are in use
+if QBITTORRENT_USERNAME == 'admin' and QBITTORRENT_PASSWORD == 'adminadmin':
+    print(
+        "WARNING: qBittorrent is using default credentials (admin/adminadmin). "
+        "Set QBITTORRENT_USERNAME and QBITTORRENT_PASSWORD to secure values.",
+        file=sys.stderr
+    )
 
 # Setup logging - use only one handler to avoid duplicates
 log_handler = None
@@ -41,7 +79,7 @@ else:
     log_handler = logging.StreamHandler()
 
 logging.basicConfig(
-    level=getattr(logging, LOG_LEVEL.upper()),
+    level=_LOG_LEVEL,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[log_handler]
 )
