@@ -89,9 +89,11 @@ if [ "$INIT_SYSTEM" = "openrc" ]; then
             sed -i 's/\r$//' pia-qbittorrent-sync.conf 2>/dev/null || true
         fi
         cp pia-qbittorrent-sync.conf /etc/conf.d/pia-qbittorrent-sync
+        chmod 600 /etc/conf.d/pia-qbittorrent-sync
         echo "Configuration file created at /etc/conf.d/pia-qbittorrent-sync"
     else
         echo "Configuration file already exists at /etc/conf.d/pia-qbittorrent-sync (not overwriting)"
+        chmod 600 /etc/conf.d/pia-qbittorrent-sync
     fi
 else
     echo "Installing systemd service..."
@@ -103,11 +105,11 @@ fi
 echo "Setting up logging..."
 mkdir -p /var/log
 touch /var/log/pia_qbittorrent_sync.log
-chmod 644 /var/log/pia_qbittorrent_sync.log
+chmod 600 /var/log/pia_qbittorrent_sync.log
 
 # Create token directory
 mkdir -p /run/pia
-chmod 755 /run/pia
+chmod 700 /run/pia
 
 echo ""
 echo "Installation complete!"
