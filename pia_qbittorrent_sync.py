@@ -12,6 +12,7 @@ import json
 import base64
 import logging
 import signal
+import tempfile
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.connection import create_connection
@@ -27,8 +28,8 @@ PIA_HOSTNAME = os.getenv('PIA_HOSTNAME')  # Custom hostname for PIA API requests
 PIA_CA_CERT = os.getenv('PIA_CA_CERT')  # Path to CA certificate file for PIA API
 PIA_TOKEN_FILE = os.getenv('PIA_TOKEN_FILE', '/var/run/pia_token')
 QBITTORRENT_HOST = os.getenv('QBITTORRENT_HOST', 'http://localhost:8080')
-QBITTORRENT_USERNAME = os.getenv('QBITTORRENT_USERNAME', 'admin')
-QBITTORRENT_PASSWORD = os.getenv('QBITTORRENT_PASSWORD', 'adminadmin')
+QBITTORRENT_USERNAME = os.getenv('QBITTORRENT_USERNAME')
+QBITTORRENT_PASSWORD = os.getenv('QBITTORRENT_PASSWORD')
 CHECK_INTERVAL = int(os.getenv('CHECK_INTERVAL', '300'))  # 5 minutes default
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 LOG_FILE = os.getenv('LOG_FILE', '/var/log/pia_updater.log')
@@ -36,7 +37,18 @@ LOG_FILE = os.getenv('LOG_FILE', '/var/log/pia_updater.log')
 # Setup logging - use only one handler to avoid duplicates
 log_handler = None
 if os.access(os.path.dirname(LOG_FILE) or '.', os.W_OK):
-    log_handler = logging.FileHandler(LOG_FILE)
+    # Open (or create) the log file, then enforce 0600 permissions regardless of
+    # whether the file already existed with broader permissions.
+    try:
+        log_fd = os.open(LOG_FILE, os.O_CREAT | os.O_WRONLY | os.O_APPEND, 0o600)
+        try:
+            os.fchmod(log_fd, 0o600)
+            log_handler = logging.StreamHandler(os.fdopen(log_fd, 'a'))
+        except OSError:
+            os.close(log_fd)
+            log_handler = logging.StreamHandler()
+    except OSError:
+        log_handler = logging.StreamHandler()
 else:
     log_handler = logging.StreamHandler()
 
@@ -175,9 +187,30 @@ class PIAPortForwarder:
                 if self.token:
                     # Save token for future use
                     try:
-                        os.makedirs(os.path.dirname(self.token_file), exist_ok=True)
-                        with open(self.token_file, 'w') as f:
-                            f.write(self.token)
+                        token_dir = os.path.dirname(self.token_file) or '.'
+                        os.makedirs(token_dir, mode=0o700, exist_ok=True)
+                        # Write to a uniquely-named temp file in the same directory,
+                        # then atomically replace the target so a crash mid-write
+                        # never leaves a partial/empty token file. mkstemp gives a
+                        # unique name (no predictable .tmp race), and fchmod enforces
+                        # 0600 even when the token file already existed with broader
+                        # permissions.
+                        tmp_fd, tmp_file = tempfile.mkstemp(dir=token_dir, prefix='.token_')
+                        try:
+                            os.fchmod(tmp_fd, 0o600)
+                            os.write(tmp_fd, self.token.encode())
+                            os.close(tmp_fd)
+                            tmp_fd = -1
+                            os.replace(tmp_file, self.token_file)
+                            tmp_file = None
+                        finally:
+                            if tmp_fd != -1:
+                                os.close(tmp_fd)
+                            if tmp_file is not None:
+                                try:
+                                    os.unlink(tmp_file)
+                                except OSError:
+                                    pass
                         logger.info(f"Saved new PIA token to {self.token_file}")
                     except Exception as e:
                         logger.warning(f"Failed to save token: {e}")
@@ -635,8 +668,59 @@ class PIAUpdaterService:
         return 0
 
 
+# Stored in normalized (casefolded) form; input credentials are normalized before comparison.
+_INSECURE_CREDENTIAL_VALUES = {
+    'admin',
+    'adminadmin',
+    'password',
+    'change_me',
+    'changeme',
+}
+
+
+def _normalize_credential(value: Optional[str]) -> str:
+    """Normalize a credential value for validation (strip whitespace and case-fold).
+
+    Returns an empty string if value is None, enabling the same emptiness check
+    for both unset (None) and blank ('  ') values.
+    """
+    if value is None:
+        return ""
+    return value.strip().casefold()
+
+
+def _validate_credentials() -> bool:
+    """Validate that qBittorrent credentials are set and not using known insecure defaults."""
+    errors = []
+
+    normalized_username = _normalize_credential(QBITTORRENT_USERNAME)
+    normalized_password = _normalize_credential(QBITTORRENT_PASSWORD)
+
+    if not normalized_username:
+        errors.append("QBITTORRENT_USERNAME is not set")
+    elif normalized_username in _INSECURE_CREDENTIAL_VALUES:
+        errors.append("QBITTORRENT_USERNAME is set to a known insecure default value")
+
+    if not normalized_password:
+        errors.append("QBITTORRENT_PASSWORD is not set")
+    elif normalized_password in _INSECURE_CREDENTIAL_VALUES:
+        errors.append("QBITTORRENT_PASSWORD is set to a known insecure default value")
+
+    if errors:
+        for error in errors:
+            logger.error(f"Credential configuration error: {error}")
+        logger.error(
+            "Service cannot start with missing or insecure credentials. "
+            "Set QBITTORRENT_USERNAME and QBITTORRENT_PASSWORD to secure values."
+        )
+        return False
+    return True
+
+
 def main():
     """Entry point for the service."""
+    if not _validate_credentials():
+        return os.EX_CONFIG
     try:
         service = PIAUpdaterService()
     except ValueError:
