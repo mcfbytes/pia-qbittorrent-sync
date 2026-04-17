@@ -343,7 +343,6 @@ sudo chmod 700 /run/pia
 - Systemd security hardening is enabled in the service file (`NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=strict`, `ProtectHome`)
 - **SSL verification is always enabled.** `PIA_CA_CERT` is mandatory; the service will refuse to start without it.
 - Set `PIA_HOSTNAME` alongside `PIA_CA_CERT` so that SSL hostname validation succeeds (PIA gateway certificates are issued for the server hostname, not the gateway IP).
-- Systemd security hardening is enabled in the service file (`NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=strict`, `ProtectHome`)
 
 ## License
 

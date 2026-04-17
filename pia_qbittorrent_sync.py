@@ -57,11 +57,17 @@ except ValueError as e:
     print(f"ERROR: Invalid CHECK_INTERVAL: {e}", file=sys.stderr)
     sys.exit(1)
 
+
+def _is_readable_token_file(path: str) -> bool:
+    token_path = Path(path)
+    return token_path.is_file() and os.access(token_path, os.R_OK)
+
+
 # Validate that credentials or a token file are available for PIA authentication
-if not (PIA_USERNAME and PIA_PASSWORD) and not os.path.exists(PIA_TOKEN_FILE):
+if not (PIA_USERNAME and PIA_PASSWORD) and not _is_readable_token_file(PIA_TOKEN_FILE):
     print(
         "ERROR: PIA credentials not configured. "
-        "Set PIA_USERNAME and PIA_PASSWORD, or provide a valid PIA_TOKEN_FILE.",
+        "Set PIA_USERNAME and PIA_PASSWORD, or provide a readable regular file in PIA_TOKEN_FILE.",
         file=sys.stderr
     )
     sys.exit(1)
