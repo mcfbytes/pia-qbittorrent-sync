@@ -215,15 +215,6 @@ The PIA CA certificate (`ca.rsa.4096.crt`) is bundled with the [PIA manual conne
 
 Because PIA gateway certificates are issued for a hostname (not for the gateway IP), you should also set `PIA_HOSTNAME` to the server hostname that matches the certificate. When `PIA_HOSTNAME` is set, the service connects to the gateway IP over TCP but uses the hostname in the TLS handshake so that certificate validation succeeds.
 
-### SSL Certificate Verification
-
-`PIA_CA_CERT` is **required**. The service will log an error and exit immediately if it is not set or the file does not exist. This prevents man-in-the-middle attacks against the PIA gateway API.
-
-The PIA CA certificate (`ca.rsa.4096.crt`) is bundled with the [PIA manual connection guide](https://www.privateinternetaccess.com/helpdesk/guides/desktop/linux/linux-manual-connection). Download it and point `PIA_CA_CERT` to its path.
-
-Because PIA gateway certificates are issued for a hostname (not for the gateway IP), you should also set `PIA_HOSTNAME` to the server hostname that matches the certificate. When `PIA_HOSTNAME` is set, the service connects to the gateway IP over TCP but uses the hostname in the TLS handshake so that certificate validation succeeds.
-| `LOG_FILE` | `/var/log/pia-qbittorrent-sync/pia_qbittorrent_sync.log` | Log file location |
-
 ## How It Works
 
 1. **Token Retrieval**: Gets authentication token from PIA gateway
@@ -344,13 +335,14 @@ sudo chmod 700 /run/pia
 
 ## Security Notes
 
-- **SSL verification is always enabled.** `PIA_CA_CERT` is mandatory; the service will refuse to start without it.
-- Set `PIA_HOSTNAME` alongside `PIA_CA_CERT` so that SSL hostname validation succeeds (PIA gateway certificates are issued for the server hostname, not the gateway IP).
+- The service runs as the dedicated unprivileged system user `pia-sync` (created automatically by `install.sh`)
 - Store qBittorrent credentials securely.
 - Consider using a dedicated qBittorrent user with limited permissions.
-- Systemd security hardening is enabled in the service file.
 - The token directory `/run/pia` is managed by systemd (`RuntimeDirectory=`) and recreated on every boot with mode `0700` owned by `pia-sync`; for OpenRC it is created by the installer
 - The log directory `/var/log/pia-qbittorrent-sync/` is managed by systemd (`LogsDirectory=`) and created with mode `0750` owned by `pia-sync`; for OpenRC it is created by the installer
+- Systemd security hardening is enabled in the service file (`NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=strict`, `ProtectHome`)
+- **SSL verification is always enabled.** `PIA_CA_CERT` is mandatory; the service will refuse to start without it.
+- Set `PIA_HOSTNAME` alongside `PIA_CA_CERT` so that SSL hostname validation succeeds (PIA gateway certificates are issued for the server hostname, not the gateway IP).
 - Systemd security hardening is enabled in the service file (`NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=strict`, `ProtectHome`)
 
 ## License

@@ -26,7 +26,6 @@ start_pre() {
     
     # Create token directory if it doesn't exist
     checkpath --directory --mode 0700 --owner pia-sync:pia-sync /run/pia
-    checkpath --directory --mode 0700 --owner pia-sync:pia-sync /run/pia
     
     # Check required environment variables
     if [ -z "$PIA_USERNAME" ] || [ -z "$PIA_PASSWORD" ]; then
@@ -46,7 +45,6 @@ start() {
         --make-pidfile \
         --pidfile "${pidfile}" \
         --background \
-        --user pia-sync \
         --user pia-sync \
         --stdout /var/log/pia_qbittorrent_sync.log \
         --stderr /var/log/pia_qbittorrent_sync.log \
