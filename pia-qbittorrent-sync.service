@@ -37,6 +37,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
+ReadWritePaths=/var/log/pia-qbittorrent-sync /run/pia
 LogsDirectory=pia-qbittorrent-sync
 LogsDirectoryMode=0750
 RuntimeDirectory=pia

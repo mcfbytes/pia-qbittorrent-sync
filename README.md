@@ -336,17 +336,13 @@ sudo chmod 700 /run/pia
 ## Security Notes
 
 - The service runs as the dedicated unprivileged system user `pia-sync` (created automatically by `install.sh`)
-- Store qBittorrent credentials securely
-- Consider using a dedicated qBittorrent user with limited permissions
+- Store qBittorrent credentials securely.
+- Consider using a dedicated qBittorrent user with limited permissions.
 - The token directory `/run/pia` is managed by systemd (`RuntimeDirectory=`) and recreated on every boot with mode `0700` owned by `pia-sync`; for OpenRC it is created by the installer
 - The log directory `/var/log/pia-qbittorrent-sync/` is managed by systemd (`LogsDirectory=`) and created with mode `0750` owned by `pia-sync`; for OpenRC it is created by the installer
 - Systemd security hardening is enabled in the service file (`NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=strict`, `ProtectHome`)
 - **SSL verification is always enabled.** `PIA_CA_CERT` is mandatory; the service will refuse to start without it.
 - Set `PIA_HOSTNAME` alongside `PIA_CA_CERT` so that SSL hostname validation succeeds (PIA gateway certificates are issued for the server hostname, not the gateway IP).
-- Store qBittorrent credentials securely.
-- Consider using a dedicated qBittorrent user with limited permissions.
-- The service runs as root by default to access network interfaces.
-- Systemd security hardening is enabled in the service file.
 
 ## License
 
