@@ -30,8 +30,6 @@ PIA_TOKEN_FILE = os.getenv('PIA_TOKEN_FILE', '/var/run/pia_token')
 QBITTORRENT_HOST = os.getenv('QBITTORRENT_HOST', 'http://localhost:8080')
 QBITTORRENT_USERNAME = os.getenv('QBITTORRENT_USERNAME')
 QBITTORRENT_PASSWORD = os.getenv('QBITTORRENT_PASSWORD')
-CHECK_INTERVAL = int(os.getenv('CHECK_INTERVAL', '300'))  # 5 minutes default
-LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 LOG_FILE = os.getenv('LOG_FILE', '/var/log/pia_updater.log')
 
 # Validate LOG_LEVEL
@@ -43,7 +41,7 @@ if not isinstance(_LOG_LEVEL, int):
         "Must be one of: DEBUG, INFO, WARNING, ERROR, CRITICAL",
         file=sys.stderr
     )
-    sys.exit(1)
+    sys.exit(os.EX_CONFIG)
 LOG_LEVEL = _LOG_LEVEL_STR
 
 # Validate CHECK_INTERVAL
@@ -55,7 +53,7 @@ try:
         raise ValueError("CHECK_INTERVAL must not exceed 86400 seconds (24 hours)")
 except ValueError as e:
     print(f"ERROR: Invalid CHECK_INTERVAL: {e}", file=sys.stderr)
-    sys.exit(1)
+    sys.exit(os.EX_CONFIG)
 
 
 def _is_readable_token_file(path: str) -> bool:
@@ -70,7 +68,7 @@ if not (PIA_USERNAME and PIA_PASSWORD) and not _is_readable_token_file(PIA_TOKEN
         "Set PIA_USERNAME and PIA_PASSWORD, or provide a readable regular file in PIA_TOKEN_FILE.",
         file=sys.stderr
     )
-    sys.exit(1)
+    sys.exit(os.EX_CONFIG)
 
 # Warn if default qBittorrent credentials are in use
 if QBITTORRENT_USERNAME == 'admin' and QBITTORRENT_PASSWORD == 'adminadmin':
