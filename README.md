@@ -205,7 +205,15 @@ All configuration is done via environment variables in the systemd service file:
 | `QBITTORRENT_PASSWORD` | `adminadmin` | qBittorrent password |
 | `CHECK_INTERVAL` | `300` | Check interval in seconds |
 | `LOG_LEVEL` | `INFO` | Logging level |
-| `LOG_FILE` | `/var/log/pia_qbittorrent_sync.log` | Log file location |
+| `LOG_FILE` | `/var/log/pia-qbittorrent-sync/pia_qbittorrent_sync.log` | Log file location |
+
+### SSL Certificate Verification
+
+`PIA_CA_CERT` is **required**. The service will log an error and exit immediately if it is not set or the file does not exist. This prevents man-in-the-middle attacks against the PIA gateway API.
+
+The PIA CA certificate (`ca.rsa.4096.crt`) is bundled with the [PIA manual connection guide](https://www.privateinternetaccess.com/helpdesk/guides/desktop/linux/linux-manual-connection). Download it and point `PIA_CA_CERT` to its path.
+
+Because PIA gateway certificates are issued for a hostname (not for the gateway IP), you should also set `PIA_HOSTNAME` to the server hostname that matches the certificate. When `PIA_HOSTNAME` is set, the service connects to the gateway IP over TCP but uses the hostname in the TLS handshake so that certificate validation succeeds.
 
 ### SSL Certificate Verification
 
