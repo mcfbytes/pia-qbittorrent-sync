@@ -15,7 +15,6 @@ import signal
 import tempfile
 import requests
 from requests.adapters import HTTPAdapter
-from urllib3.util.connection import create_connection
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -153,27 +152,35 @@ class PIAPortForwarder:
     def _patch_urllib3_connection(self):
         """Patch urllib3 connection to redirect hostname to gateway IP."""
         try:
-            from urllib3.util import connection as urllib3_connection
-            
-            # Store the original if not already stored
-            if not hasattr(urllib3_connection, '_orig_create_connection'):
-                urllib3_connection._orig_create_connection = urllib3_connection.create_connection
-            
+            from urllib3.util import connection as urllib3_util_connection
+            from urllib3 import connection as urllib3_connection_mod
+
+            # Store the originals if not already stored (idempotent guard)
+            if not hasattr(urllib3_util_connection, '_orig_create_connection'):
+                urllib3_util_connection._orig_create_connection = urllib3_util_connection.create_connection
+            if not hasattr(urllib3_connection_mod, '_orig_create_connection'):
+                urllib3_connection_mod._orig_create_connection = urllib3_connection_mod.create_connection
+
             gateway_ip = self.gateway
             hostname = self.hostname
-            
+
             def patched_create_connection(address, *args, **kwargs):
                 """Wrap create_connection to redirect hostname to gateway IP."""
                 host, port = address
                 # If connecting to our PIA hostname, redirect to gateway IP
                 if host == hostname:
                     logger.debug(f"Redirecting connection from {hostname} to {gateway_ip}")
-                    return urllib3_connection._orig_create_connection((gateway_ip, port), *args, **kwargs)
-                return urllib3_connection._orig_create_connection(address, *args, **kwargs)
-            
-            # Apply the patch globally
-            urllib3_connection.create_connection = patched_create_connection
-            logger.debug(f"Applied urllib3 connection patch for {hostname} -> {gateway_ip}")
+                    return urllib3_util_connection._orig_create_connection((gateway_ip, port), *args, **kwargs)
+                return urllib3_util_connection._orig_create_connection(address, *args, **kwargs)
+
+            # Patch both locations: the canonical source and the bound reference
+            # used by urllib3.connection.HTTPConnection._new_conn
+            urllib3_util_connection.create_connection = patched_create_connection
+            urllib3_connection_mod.create_connection = patched_create_connection
+            logger.debug(
+                f"Applied urllib3 connection patch for {hostname} -> {gateway_ip} "
+                f"(urllib3.util.connection and urllib3.connection)"
+            )
         except Exception as e:
             logger.warning(f"Failed to patch urllib3 connection: {e}")
     
