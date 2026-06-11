@@ -6,6 +6,7 @@ and updates qBittorrent's listening port.
 """
 
 import os
+import ssl
 import sys
 import time
 import json
@@ -158,8 +159,6 @@ class PIAPortForwarder:
             # Store the originals if not already stored (idempotent guard)
             if not hasattr(urllib3_util_connection, '_orig_create_connection'):
                 urllib3_util_connection._orig_create_connection = urllib3_util_connection.create_connection
-            if not hasattr(urllib3_connection_mod, '_orig_create_connection'):
-                urllib3_connection_mod._orig_create_connection = urllib3_connection_mod.create_connection
 
             gateway_ip = self.gateway
             hostname = self.hostname
@@ -173,13 +172,23 @@ class PIAPortForwarder:
                     return urllib3_util_connection._orig_create_connection((gateway_ip, port), *args, **kwargs)
                 return urllib3_util_connection._orig_create_connection(address, *args, **kwargs)
 
-            # Patch both locations: the canonical source and the bound reference
-            # used by urllib3.connection.HTTPConnection._new_conn
+            # Patch the canonical source. urllib3 2.x resolves
+            # connection.create_connection through the urllib3.util.connection
+            # module at call time, so patching it there is sufficient.
             urllib3_util_connection.create_connection = patched_create_connection
-            urllib3_connection_mod.create_connection = patched_create_connection
+            patched_locations = "urllib3.util.connection"
+
+            # urllib3 1.x re-exported create_connection into urllib3.connection
+            # and called it via that bound reference; patch it too when present.
+            if hasattr(urllib3_connection_mod, 'create_connection'):
+                if not hasattr(urllib3_connection_mod, '_orig_create_connection'):
+                    urllib3_connection_mod._orig_create_connection = urllib3_connection_mod.create_connection
+                urllib3_connection_mod.create_connection = patched_create_connection
+                patched_locations += " and urllib3.connection"
+
             logger.debug(
                 f"Applied urllib3 connection patch for {hostname} -> {gateway_ip} "
-                f"(urllib3.util.connection and urllib3.connection)"
+                f"({patched_locations})"
             )
         except Exception as e:
             logger.warning(f"Failed to patch urllib3 connection: {e}")
@@ -187,20 +196,26 @@ class PIAPortForwarder:
     def _create_session_with_host_override(self) -> requests.Session:
         """Create a requests session with custom hostname handling for cert verification."""
         session = requests.Session()
-        
-        if self.hostname:
-            # Create a custom adapter for SNI hostname override
-            hostname = self.hostname
-            
-            class HostHeaderSSLAdapter(HTTPAdapter):
-                def init_poolmanager(self, *args, **kwargs):
+
+        # Build an SSL context that trusts the PIA CA certificate. Python 3.13+
+        # enables ssl.VERIFY_X509_STRICT by default, which rejects PIA's CA
+        # certificate ("Basic Constraints of CA cert not marked critical"), so
+        # clear the strict flag while keeping full certificate and hostname
+        # verification enabled.
+        ssl_context = ssl.create_default_context(cafile=self.ca_cert)
+        ssl_context.verify_flags &= ~ssl.VERIFY_X509_STRICT
+        hostname = self.hostname
+
+        class HostHeaderSSLAdapter(HTTPAdapter):
+            def init_poolmanager(self, *args, **kwargs):
+                kwargs['ssl_context'] = ssl_context
+                if hostname:
                     # Override server_hostname for SNI to match the certificate
                     kwargs['server_hostname'] = hostname
-                    return super().init_poolmanager(*args, **kwargs)
-            
-            adapter = HostHeaderSSLAdapter()
-            session.mount('https://', adapter)
-        
+                return super().init_poolmanager(*args, **kwargs)
+
+        session.mount('https://', HostHeaderSSLAdapter())
+
         return session
         
     def get_token(self) -> Optional[str]:
