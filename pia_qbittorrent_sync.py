@@ -475,8 +475,8 @@ class QBittorrentClient:
                 },
                 timeout=10
             )
-            
-            if response.status_code == 200 and response.text == 'Ok.':
+
+            if response.status_code in (200, 204):
                 self.authenticated = True
                 logger.info("Successfully authenticated with qBittorrent")
                 return True
