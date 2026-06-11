@@ -98,11 +98,11 @@ sudo chmod +x /etc/init.d/pia-qbittorrent-sync
 sudo cp pia-qbittorrent-sync.conf /etc/conf.d/pia-qbittorrent-sync
 
 # OpenRC only: create log file and token directory (systemd manages these automatically
-# via LogsDirectory= and RuntimeDirectory= in the unit file))
+# via LogsDirectory= and RuntimeDirectory= in the unit file)
 sudo mkdir -p /var/log
 sudo touch /var/log/pia_qbittorrent_sync.log
 sudo chown pia-sync:pia-sync /var/log/pia_qbittorrent_sync.log
-sudo chmod 640 /var/log/pia_qbittorrent_sync.log
+sudo chmod 600 /var/log/pia_qbittorrent_sync.log
 
 sudo mkdir -p /run/pia
 sudo chown pia-sync:pia-sync /run/pia
@@ -117,12 +117,15 @@ Edit `/etc/systemd/system/pia-qbittorrent-sync.service` and update the environme
 **For OpenRC (Alpine Linux):**
 Edit `/etc/conf.d/pia-qbittorrent-sync` and update the configuration variables:
 
-- **PIA_GATEWAY**: Your WireGuard gateway IP (usually `10.0.0.1`)
+- **PIA_USERNAME** / **PIA_PASSWORD**: PIA account credentials (required unless a readable token file already exists at `PIA_TOKEN_FILE`)
+- **PIA_GATEWAY**: Your WireGuard gateway IP (default: `10.0.0.1`)
+- **PIA_HOSTNAME**: PIA server hostname matching the CA certificate (strongly recommended)
+- **PIA_CA_CERT**: Path to the PIA CA certificate file (required)
 - **QBITTORRENT_HOST**: qBittorrent Web UI URL (default: `http://localhost:8080`)
-- **QBITTORRENT_USERNAME**: qBittorrent Web UI username
-- **QBITTORRENT_PASSWORD**: qBittorrent Web UI password
+- **QBITTORRENT_USERNAME**: qBittorrent Web UI username (required; the service refuses to start with known insecure defaults such as `admin` or `CHANGE_ME`)
+- **QBITTORRENT_PASSWORD**: qBittorrent Web UI password (required; same insecure-default check applies)
 - **CHECK_INTERVAL**: How often to check in seconds (default: 300 = 5 minutes)
-- **LOG_LEVEL**: Logging level (DEBUG, INFO, WARNING, ERROR)
+- **LOG_LEVEL**: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 
 ### 4. Enable and start the service
 
@@ -166,14 +169,17 @@ sudo systemctl status pia-qbittorrent-sync.service
 ### View logs
 
 ```bash
-# Real-time logs
+# Real-time logs (systemd)
 sudo journalctl -u pia-qbittorrent-sync.service -f
 
-# All logs
+# All logs (systemd)
 sudo journalctl -u pia-qbittorrent-sync.service
 
-# Log file
+# Log file (systemd)
 sudo tail -f /var/log/pia-qbittorrent-sync/pia_qbittorrent_sync.log
+
+# Log file (OpenRC)
+sudo tail -f /var/log/pia_qbittorrent_sync.log
 ```
 
 ### Restart service
@@ -190,7 +196,7 @@ sudo systemctl stop pia-qbittorrent-sync.service
 
 ## Configuration
 
-All configuration is done via environment variables in the systemd service file:
+All configuration is done via environment variables (set in the systemd service file or `/etc/conf.d/pia-qbittorrent-sync` for OpenRC):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -199,13 +205,13 @@ All configuration is done via environment variables in the systemd service file:
 | `PIA_HOSTNAME` | *(optional)* | PIA server hostname (e.g. `mexico409`). **Strongly recommended.** Without it the gateway IP is used in the TLS handshake, which will fail unless the CA certificate covers the IP. Set this when using the standard PIA CA cert (which is hostname-based). |
 | `PIA_USERNAME` | — | PIA account username (needed when no token file exists) |
 | `PIA_PASSWORD` | — | PIA account password (needed when no token file exists) |
-| `PIA_TOKEN_FILE` | `/run/pia/token` | Location to store/read the PIA auth token |
+| `PIA_TOKEN_FILE` | `/var/run/pia_token` | Location to store/read the PIA auth token. Both bundled service files set this to `/run/pia/token`. |
 | `QBITTORRENT_HOST` | `http://localhost:8080` | qBittorrent Web UI URL |
-| `QBITTORRENT_USERNAME` | `admin` | qBittorrent username |
-| `QBITTORRENT_PASSWORD` | `adminadmin` | qBittorrent password |
-| `CHECK_INTERVAL` | `300` | Check interval in seconds |
-| `LOG_LEVEL` | `INFO` | Logging level |
-| `LOG_FILE` | `/var/log/pia-qbittorrent-sync/pia_qbittorrent_sync.log` | Log file location |
+| `QBITTORRENT_USERNAME` | *(required)* | qBittorrent username. The service refuses to start if unset or set to a known insecure default (e.g. `admin`, `CHANGE_ME`). |
+| `QBITTORRENT_PASSWORD` | *(required)* | qBittorrent password. Same insecure-default check applies (e.g. `adminadmin`, `password`). |
+| `CHECK_INTERVAL` | `300` | Check interval in seconds (1–86400) |
+| `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
+| `LOG_FILE` | `/var/log/pia_updater.log` | Log file location. The systemd unit sets `/var/log/pia-qbittorrent-sync/pia_qbittorrent_sync.log`; the OpenRC config sets `/var/log/pia_qbittorrent_sync.log`. If the log file's directory is not writable, logs go to stdout/stderr instead. |
 
 ### SSL Certificate Verification
 
@@ -328,7 +334,7 @@ curl http://localhost:8080/api/v2/app/version
 Ensure the service user owns the log file and token directory (OpenRC only; systemd manages these automatically):
 ```bash
 sudo chown pia-sync:pia-sync /var/log/pia_qbittorrent_sync.log
-sudo chmod 640 /var/log/pia_qbittorrent_sync.log
+sudo chmod 600 /var/log/pia_qbittorrent_sync.log
 sudo chown pia-sync:pia-sync /run/pia
 sudo chmod 700 /run/pia
 ```

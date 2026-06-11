@@ -27,14 +27,11 @@ start_pre() {
     # Create token directory if it doesn't exist
     checkpath --directory --mode 0700 --owner pia-sync:pia-sync /run/pia
     
-    # Check required environment variables
-    if [ -z "$PIA_USERNAME" ] || [ -z "$PIA_PASSWORD" ]; then
-        eerror "PIA_USERNAME and PIA_PASSWORD must be set in /etc/conf.d/pia-qbittorrent-sync"
-        return 1
-    fi
-    
-    if [ -z "$PIA_GATEWAY" ]; then
-        eerror "PIA_GATEWAY must be set in /etc/conf.d/pia-qbittorrent-sync"
+    # Check required environment variables: PIA credentials are needed unless
+    # a readable token file already exists at PIA_TOKEN_FILE.
+    local token_file="${PIA_TOKEN_FILE:-/var/run/pia_token}"
+    if { [ -z "$PIA_USERNAME" ] || [ -z "$PIA_PASSWORD" ]; } && [ ! -r "$token_file" ]; then
+        eerror "PIA_USERNAME and PIA_PASSWORD must be set in /etc/conf.d/pia-qbittorrent-sync (or provide an existing token file at PIA_TOKEN_FILE)"
         return 1
     fi
 }
@@ -129,11 +126,5 @@ stop() {
         --pidfile "${pidfile}" \
         --signal SIGTERM \
         --retry 15
-    eend $?
-}
-
-reload() {
-    ebegin "Reloading ${name}"
-    start-stop-daemon --signal SIGHUP --pidfile "${pidfile}"
     eend $?
 }
