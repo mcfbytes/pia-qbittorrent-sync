@@ -140,7 +140,7 @@ if [ "$INIT_SYSTEM" = "openrc" ]; then
     mkdir -p /var/log
     touch /var/log/pia_qbittorrent_sync.log
     chown pia-sync:pia-sync /var/log/pia_qbittorrent_sync.log
-    chmod 640 /var/log/pia_qbittorrent_sync.log
+    chmod 600 /var/log/pia_qbittorrent_sync.log
 
     mkdir -p /run/pia
     chown pia-sync:pia-sync /run/pia
