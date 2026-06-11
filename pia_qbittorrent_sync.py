@@ -749,8 +749,6 @@ def _validate_credentials() -> bool:
 
     if not normalized_username:
         errors.append("QBITTORRENT_USERNAME is not set")
-    elif normalized_username in _INSECURE_CREDENTIAL_VALUES:
-        errors.append("QBITTORRENT_USERNAME is set to a known insecure default value")
 
     if not normalized_password:
         errors.append("QBITTORRENT_PASSWORD is not set")
