@@ -136,7 +136,8 @@ if [ "$INIT_SYSTEM" = "openrc" ]; then
         echo "Configuration file created at /etc/conf.d/pia-qbittorrent-sync"
     else
         echo "Configuration file already exists at /etc/conf.d/pia-qbittorrent-sync (not overwriting)"
-        echo "Add PIA_CONFIG_FILE, PIA_WG_CONFIG, FAILOVER_TIMEOUT, RETRY_INTERVAL from pia-qbittorrent-sync.conf to enable failover"
+        grep -q '^PIA_CONFIG_FILE=' /etc/conf.d/pia-qbittorrent-sync || \
+            echo "Add PIA_CONFIG_FILE, PIA_WG_CONFIG, FAILOVER_TIMEOUT, RETRY_INTERVAL from pia-qbittorrent-sync.conf to enable failover"
     fi
 else
     echo "Installing systemd service..."
