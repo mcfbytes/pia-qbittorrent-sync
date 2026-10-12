@@ -16,28 +16,35 @@ RestartSec=10
 RestartPreventExitStatus=78
 
 # Environment variables (customize these)
-Environment="PIA_GATEWAY=10.0.0.1"
+# PIA_GATEWAY and PIA_HOSTNAME live in server.env so the service can rewrite them when it
+# fails over to another PIA server (see PIA_CONFIG_FILE below).
+EnvironmentFile=-/etc/pia-qbittorrent-sync/server.env
+Environment="PIA_CONFIG_FILE=/etc/pia-qbittorrent-sync/server.env"
 # PIA_CA_CERT is required. The service will not start without it.
 # Download ca.rsa.4096.crt from the PIA manual connection guide.
 Environment="PIA_CA_CERT=/etc/pia/ca.rsa.4096.crt"
-# PIA_HOSTNAME should match the server name in the PIA CA certificate.
-# Environment="PIA_HOSTNAME=your_server_hostname"
 Environment="PIA_TOKEN_FILE=/run/pia/token"
 Environment="QBITTORRENT_HOST=http://localhost:8080"
 # WARNING: Replace CHANGE_ME with your actual qBittorrent credentials before starting the service.
-# The service will refuse to start if these are left as CHANGE_ME or any other known default.
+# The service will refuse to start if the password is blank, CHANGE_ME or another known default.
 Environment="QBITTORRENT_USERNAME=CHANGE_ME"
 Environment="QBITTORRENT_PASSWORD=CHANGE_ME"
 Environment="CHECK_INTERVAL=300"
+# Switch to another port-forwarding PIA server after this many seconds without the PIA
+# gateway (0 disables). Needs PIA_USERNAME/PIA_PASSWORD (e.g. in an EnvironmentFile).
+Environment="FAILOVER_TIMEOUT=300"
 Environment="LOG_LEVEL=INFO"
 Environment="LOG_FILE=/var/log/pia-qbittorrent-sync/pia_qbittorrent_sync.log"
 
 # Security hardening
-NoNewPrivileges=true
+# Failover restarts WireGuard through `sudo -n wg-quick` (see /etc/sudoers.d/pia-qbittorrent-sync),
+# which requires NoNewPrivileges=false. Set it back to true if you disable failover.
+NoNewPrivileges=false
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/log/pia-qbittorrent-sync /run/pia
+# Failover rewrites the hosts file, the WireGuard config and server.env in place.
+ReadWritePaths=/var/log/pia-qbittorrent-sync /run/pia -/etc/hosts -/etc/wireguard -/etc/pia-qbittorrent-sync
 LogsDirectory=pia-qbittorrent-sync
 LogsDirectoryMode=0750
 RuntimeDirectory=pia

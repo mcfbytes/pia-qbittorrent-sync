@@ -8,6 +8,7 @@ Shamelessly vibe coded with GitHub Copilot using various models.
 
 - Retrieves forwarded port from PIA via WireGuard gateway
 - Automatically refreshes port before expiry
+- Fails over to another port-forwarding PIA WireGuard server when the gateway stays unreachable
 - Updates qBittorrent 5.0 listening port via API
 - Runs as a systemd service on Linux
 - Configurable via environment variables
@@ -16,7 +17,8 @@ Shamelessly vibe coded with GitHub Copilot using various models.
 ## Requirements
 
 - Active PIA WireGuard connection
-- Python 3.7+
+- Python 3.8+
+- `wireguard-tools` and `sudo` (for server failover)
 - qBittorrent 5.0+ with Web UI enabled
 - For Alpine Linux (OpenRC): `netcat-openbsd` or `busybox-extras` (for service health checks)
 
@@ -202,14 +204,20 @@ All configuration is done via environment variables (set in the systemd service 
 |----------|---------|-------------|
 | `PIA_GATEWAY` | `10.0.0.1` | PIA WireGuard gateway IP |
 | `PIA_CA_CERT` | *(required)* | Path to PIA CA certificate file (e.g. `ca.rsa.4096.crt`). The service will refuse to start if this is not set. |
-| `PIA_HOSTNAME` | *(optional)* | PIA server hostname (e.g. `mexico409`). **Strongly recommended.** Without it the gateway IP is used in the TLS handshake, which will fail unless the CA certificate covers the IP. Set this when using the standard PIA CA cert (which is hostname-based). |
+| `PIA_HOSTNAME` | *(optional)* | PIA server hostname (e.g. `mexico409`). **Strongly recommended, and required for failover.** The service maps it to `PIA_GATEWAY` in the hosts file so the TLS certificate validates. Without it the gateway IP is used in the TLS handshake, which fails unless the CA certificate covers the IP. |
 | `PIA_USERNAME` | — | PIA account username (needed when no token file exists) |
 | `PIA_PASSWORD` | — | PIA account password (needed when no token file exists) |
 | `PIA_TOKEN_FILE` | `/var/run/pia_token` | Location to store/read the PIA auth token. Both bundled service files set this to `/run/pia/token`. |
 | `QBITTORRENT_HOST` | `http://localhost:8080` | qBittorrent Web UI URL |
-| `QBITTORRENT_USERNAME` | *(required)* | qBittorrent username. The service refuses to start if unset or set to a known insecure default (e.g. `admin`, `CHANGE_ME`). |
-| `QBITTORRENT_PASSWORD` | *(required)* | qBittorrent password. Same insecure-default check applies (e.g. `adminadmin`, `password`). |
+| `QBITTORRENT_USERNAME` | *(required)* | qBittorrent username. The service refuses to start if it is unset. |
+| `QBITTORRENT_PASSWORD` | *(required)* | qBittorrent password. The service refuses to start if it is unset or a known insecure default (e.g. `adminadmin`, `password`, `CHANGE_ME`). |
 | `CHECK_INTERVAL` | `300` | Check interval in seconds (1–86400) |
+| `RETRY_INTERVAL` | `30` | Check interval after a failed check (capped at `CHECK_INTERVAL`) |
+| `FAILOVER_TIMEOUT` | `300` | Seconds the PIA gateway may be unreachable before switching server; `0` disables failover |
+| `PIA_CONFIG_FILE` | *(optional)* | File whose `PIA_GATEWAY=`/`PIA_HOSTNAME=` lines are rewritten on failover (`/etc/pia-qbittorrent-sync/server.env` for systemd, `/etc/conf.d/pia-qbittorrent-sync` for OpenRC) |
+| `PIA_WG_CONFIG` | `/etc/wireguard/wg0.conf` | wg-quick config rewritten on failover; the file name gives the interface |
+| `PIA_HOSTS_FILE` | `/etc/hosts` | Hosts file that receives the hostname mapping |
+| `PIA_WG_DOWN_CMD` / `PIA_WG_UP_CMD` | `sudo -n wg-quick down\|up <interface>` | Commands that stop/start the tunnel (`install.sh` uses `doas -n /usr/bin/wg-quick …` when `doas` is present) |
 | `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
 | `LOG_FILE` | `/var/log/pia_updater.log` | Log file location. The systemd unit sets `/var/log/pia-qbittorrent-sync/pia_qbittorrent_sync.log`; the OpenRC config sets `/var/log/pia_qbittorrent_sync.log`. If the log file's directory is not writable, logs go to stdout/stderr instead. |
 
@@ -219,7 +227,22 @@ All configuration is done via environment variables (set in the systemd service 
 
 The PIA CA certificate (`ca.rsa.4096.crt`) is bundled with the [PIA manual connection guide](https://www.privateinternetaccess.com/helpdesk/guides/desktop/linux/linux-manual-connection). Download it and point `PIA_CA_CERT` to its path.
 
-Because PIA gateway certificates are issued for a hostname (not for the gateway IP), you should also set `PIA_HOSTNAME` to the server hostname that matches the certificate. When `PIA_HOSTNAME` is set, the service connects to the gateway IP over TCP but uses the hostname in the TLS handshake so that certificate validation succeeds.
+Because PIA gateway certificates are issued for a hostname (not for the gateway IP), you should also set `PIA_HOSTNAME` to the server hostname that matches the certificate. At startup the service makes sure the hosts file maps that hostname to `PIA_GATEWAY` (normally the WireGuard endpoint IP), so certificate validation succeeds.
+
+## Server Failover
+
+If the PIA gateway cannot be reached for `FAILOVER_TIMEOUT` seconds (default 5 minutes), the service moves to another server:
+
+1. Brings the WireGuard interface down (a dead full tunnel would otherwise swallow the traffic).
+2. Downloads PIA's server list and keeps only online regions with `port_forward: true` (the same filter as `get_region.sh` in [manual-connections](https://github.com/pia-foss/manual-connections)). Other servers in your current region are tried first, then other regions by lowest latency.
+3. Writes `<endpoint IP> <hostname>` to the hosts file (one line tagged `# managed by pia-qbittorrent-sync`) so TLS validates against the server's certificate, and registers your WireGuard public key with the server (`addKey`).
+4. Rewrites `Address`, the peer `PublicKey` and `Endpoint` in the WireGuard config, updates `PIA_GATEWAY` and `PIA_HOSTNAME` in `PIA_CONFIG_FILE`, and brings the interface back up.
+
+Any failure rolls the files back and restores the previous tunnel, then retries a minute later. Failover needs `PIA_HOSTNAME`, `PIA_USERNAME`/`PIA_PASSWORD`, a readable `PIA_WG_CONFIG` with a `PrivateKey`, and `wg` on the path; the log says at startup whether it is enabled.
+
+`install.sh` sets this up: `pia-sync` gets group write access to `/etc/hosts`, the WireGuard config and the service config, plus a sudoers rule allowing only `wg-quick up|down wg0` (edit `/etc/sudoers.d/pia-qbittorrent-sync` if your interface is not `wg0`). Because `sudo` needs it, the systemd unit sets `NoNewPrivileges=false`.
+
+**Note:** while the interface is down your traffic is not tunnelled. If qBittorrent must never leak, bind it to the WireGuard interface or add a firewall rule that drops non-VPN traffic.
 
 ## How It Works
 
@@ -230,6 +253,19 @@ Because PIA gateway certificates are issued for a hostname (not for the gateway 
 5. **Auto-refresh**: Refreshes port 15 minutes before expiration
 
 ## Troubleshooting
+
+### `Failed to get signature: 401`
+
+PIA's gateway rejected the auth token. The service now handles the common case on its own: a cached token that PIA refuses is deleted and re-minted, and the request is retried once.
+
+If the retry also fails, the token is not the problem — PIA rejected one it had just issued — so the service logs the response body and exits with code 78 (`EX_CONFIG`) instead of restart-looping. Check, in order:
+
+1. **`PIA_USERNAME` / `PIA_PASSWORD` are your VPN credentials** — the `pXXXXXXX` username, not the email address you log into the PIA website with. Both authenticate against the token API, but only the VPN username produces a token the gateway will accept.
+2. **`PIA_GATEWAY` is the port-forwarding gateway for the server you are *currently* tunnelled through.** The `10.0.0.1` default is a placeholder. For WireGuard it is the `server_vip` returned when the key was registered; run `wg show` / check your WireGuard config to confirm the peer matches.
+3. **`PIA_HOSTNAME` names that same server** (e.g. `mexico409`), since it is what the TLS certificate is validated against.
+4. **The region supports port forwarding.** Several PIA regions (notably US ones) do not.
+
+Set `LOG_LEVEL=DEBUG` for the full request/response detail.
 
 ### Alpine Linux: qBittorrent not ready on service start
 
@@ -353,3 +389,10 @@ sudo chmod 700 /run/pia
 ## License
 
 This project is provided as-is for personal use.
+
+## Development
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python -m unittest discover -s tests
+```

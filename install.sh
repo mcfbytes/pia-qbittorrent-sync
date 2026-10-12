@@ -75,6 +75,16 @@ else
     fi
 fi
 
+# Failover restarts WireGuard through a privilege helper: doas if present, else sudo
+if command -v doas &> /dev/null; then
+    PRIV=doas
+else
+    PRIV=sudo
+    if ! command -v sudo &> /dev/null; then
+        if command -v apk &> /dev/null; then apk add --no-cache sudo; else apt-get install -y sudo || yum install -y sudo; fi
+    fi
+fi
+
 # Create installation directory
 echo "Creating installation directory..."
 mkdir -p /opt/pia-qbittorrent-sync
@@ -122,16 +132,60 @@ if [ "$INIT_SYSTEM" = "openrc" ]; then
             sed -i 's/\r$//' pia-qbittorrent-sync.conf 2>/dev/null || true
         fi
         cp pia-qbittorrent-sync.conf /etc/conf.d/pia-qbittorrent-sync
-        chmod 600 /etc/conf.d/pia-qbittorrent-sync
+        chmod 660 /etc/conf.d/pia-qbittorrent-sync
         echo "Configuration file created at /etc/conf.d/pia-qbittorrent-sync"
     else
         echo "Configuration file already exists at /etc/conf.d/pia-qbittorrent-sync (not overwriting)"
-        chmod 600 /etc/conf.d/pia-qbittorrent-sync
+        echo "Add PIA_CONFIG_FILE, PIA_WG_CONFIG, FAILOVER_TIMEOUT, RETRY_INTERVAL from pia-qbittorrent-sync.conf to enable failover"
     fi
 else
     echo "Installing systemd service..."
     cp pia-qbittorrent-sync.service /etc/systemd/system/
     systemctl daemon-reload
+
+    # PIA_GATEWAY/PIA_HOSTNAME are kept here so the service can rewrite them on failover
+    mkdir -p /etc/pia-qbittorrent-sync
+    if [ ! -f /etc/pia-qbittorrent-sync/server.env ]; then
+        printf 'PIA_GATEWAY="10.0.0.1"\nPIA_HOSTNAME="your_server_hostname"\n' > /etc/pia-qbittorrent-sync/server.env
+        echo "Created /etc/pia-qbittorrent-sync/server.env - set PIA_GATEWAY and PIA_HOSTNAME in it"
+    fi
+    chown root:pia-sync /etc/pia-qbittorrent-sync /etc/pia-qbittorrent-sync/server.env
+    chmod 770 /etc/pia-qbittorrent-sync
+    chmod 660 /etc/pia-qbittorrent-sync/server.env
+fi
+
+# Permissions for server failover: the service rewrites these files in place and
+# restarts WireGuard. Group access is limited to the pia-sync user.
+echo "Granting pia-sync access for server failover..."
+chgrp pia-sync /etc/hosts && chmod 664 /etc/hosts
+if [ -d /etc/wireguard ]; then
+    chgrp pia-sync /etc/wireguard && chmod 750 /etc/wireguard
+    for f in /etc/wireguard/*.conf; do
+        [ -e "$f" ] && chgrp pia-sync "$f" && chmod 660 "$f"
+    done
+fi
+if [ "$INIT_SYSTEM" = "openrc" ] && [ -f /etc/conf.d/pia-qbittorrent-sync ]; then
+    chgrp pia-sync /etc/conf.d/pia-qbittorrent-sync
+    chmod 660 /etc/conf.d/pia-qbittorrent-sync
+fi
+WG_BIN=$(command -v wg-quick || echo /usr/bin/wg-quick)
+if [ "$PRIV" = "doas" ]; then
+    for action in down up; do
+        rule="permit nopass pia-sync as root cmd $WG_BIN args $action wg0"
+        grep -qxF "$rule" /etc/doas.conf 2>/dev/null || echo "$rule" >> /etc/doas.conf
+    done
+    if [ "$INIT_SYSTEM" = "openrc" ] && [ -f /etc/conf.d/pia-qbittorrent-sync ]; then
+        # doas matches the command as typed against the rule, so use the full path
+        for pair in "PIA_WG_DOWN_CMD=doas -n $WG_BIN down wg0" "PIA_WG_UP_CMD=doas -n $WG_BIN up wg0"; do
+            key=${pair%%=*}
+            grep -q "^$key=" /etc/conf.d/pia-qbittorrent-sync || \
+                printf '%s="%s"\nexport %s\n' "$key" "${pair#*=}" "$key" >> /etc/conf.d/pia-qbittorrent-sync
+        done
+    fi
+else
+    mkdir -p /etc/sudoers.d
+    echo "pia-sync ALL=(root) NOPASSWD: $WG_BIN down wg0, $WG_BIN up wg0" > /etc/sudoers.d/pia-qbittorrent-sync
+    chmod 440 /etc/sudoers.d/pia-qbittorrent-sync
 fi
 
 # Create log directory and token directory for OpenRC (systemd handles these via LogsDirectory= and RuntimeDirectory=)
@@ -160,7 +214,7 @@ if [ "$INIT_SYSTEM" = "openrc" ]; then
     echo "5. View logs: tail -f /var/log/pia_qbittorrent_sync.log"
 else
     echo "Next steps:"
-    echo "1. Edit /etc/systemd/system/pia-qbittorrent-sync.service to configure your settings"
+    echo "1. Edit /etc/systemd/system/pia-qbittorrent-sync.service and /etc/pia-qbittorrent-sync/server.env to configure your settings"
     echo "2. Enable the service: sudo systemctl enable pia-qbittorrent-sync.service"
     echo "3. Start the service: sudo systemctl start pia-qbittorrent-sync.service"
     echo "4. Check status: sudo systemctl status pia-qbittorrent-sync.service"

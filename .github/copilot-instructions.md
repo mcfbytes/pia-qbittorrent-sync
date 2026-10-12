@@ -5,15 +5,18 @@ A Linux service that automatically syncs Private Internet Access (PIA) VPN port 
 
 ## Architecture
 
-### Three-Class Design
+### Class Design
 1. **PIAPortForwarder** - Handles PIA API authentication and port lifecycle
    - Token management: `/var/run/pia_token` file caching with fallback to PIA API auth
    - Two-step port activation: `getSignature` (initial) → `bindPort` (refresh every 5 min)
-   - SSL hostname patching: Uses `urllib3.util.connection` monkey-patching to redirect hostname→IP for custom cert verification
+   - TLS: the PIA hostname is mapped to the gateway IP in the hosts file (managed by `WireGuardFailover.sync_hosts`), no connection patching
 2. **QBittorrentClient** - Manages qBittorrent Web API v2 interactions
    - Session-based auth with automatic 403 retry logic
    - Port verification after updates (1-second delay before check)
-3. **PIAUpdaterService** - Main orchestrator with signal handlers (SIGTERM/SIGINT)
+3. **WireGuardFailover** - After `FAILOVER_TIMEOUT` of an unreachable gateway: picks a `port_forward` server from the PIA server list, updates hosts file, wg-quick config and service config, restarts the tunnel (rolls back on failure)
+4. **PIAUpdaterService** - Main orchestrator with signal handlers (SIGTERM/SIGINT); `Config.from_env()` holds all settings
+
+Tests: `python -m unittest discover -s tests` (never call the real PIA API from tests).
 
 ### Critical Data Flows
 - **Port expiry logic**: Refresh at 5-min intervals OR 15 min before expiry (whichever comes first)

@@ -138,3 +138,5 @@ Thumbs.db
 *.pem
 *.crt
 *.key
+
+!tests/ca.rsa.4096.crt
