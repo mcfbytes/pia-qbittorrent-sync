@@ -17,7 +17,7 @@ Shamelessly vibe coded with GitHub Copilot using various models.
 ## Requirements
 
 - Active PIA WireGuard connection
-- Python 3.8+
+- Python 3.10+ (required by the pinned `requests`)
 - `wireguard-tools` and `sudo` (for server failover)
 - qBittorrent 5.0+ with Web UI enabled
 - For Alpine Linux (OpenRC): `netcat-openbsd` or `busybox-extras` (for service health checks)
